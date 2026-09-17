@@ -1,0 +1,142 @@
+{
+  "_comment": "Declared feature inventory for PROGRESS.md. Weights are relative effort, not time. Update 'status' at UNIFY when a plan ships a feature; everything else is derived. Statuses: done | partial | blocked | todo",
+  "features": [
+    {
+      "id": "capture-fullscreen",
+      "name": "Record the full screen",
+      "group": "Capture",
+      "weight": 5,
+      "status": "done",
+      "shipped": "01-01",
+      "note": "60 fps target, ~54 delivered, stable intervals"
+    },
+    {
+      "id": "capture-window",
+      "name": "Record a specific window",
+      "group": "Capture",
+      "weight": 4,
+      "status": "blocked",
+      "note": "Measured 1.1 fps via both capture paths — needs a different mechanism"
+    },
+    {
+      "id": "capture-region",
+      "name": "Record a selected region",
+      "group": "Capture",
+      "weight": 5,
+      "status": "todo",
+      "note": "getDisplayMedia cannot sub-region; needs a crop pipeline"
+    },
+    {
+      "id": "audio-none",
+      "name": "Record with no audio",
+      "group": "Audio",
+      "weight": 1,
+      "status": "done",
+      "shipped": "01-01",
+      "note": "Current behaviour — no audio track is written at all"
+    },
+    {
+      "id": "audio-system",
+      "name": "Record system audio",
+      "group": "Audio",
+      "weight": 4,
+      "status": "todo",
+      "note": "WASAPI loopback via the display-media handler"
+    },
+    {
+      "id": "audio-mic",
+      "name": "Record microphone",
+      "group": "Audio",
+      "weight": 3,
+      "status": "todo"
+    },
+    {
+      "id": "audio-mix",
+      "name": "Record system + mic together",
+      "group": "Audio",
+      "weight": 4,
+      "status": "todo",
+      "note": "Must mix in Web Audio; MediaRecorder takes only one audio track"
+    },
+    {
+      "id": "save-disk",
+      "name": "Save recordings to disk",
+      "group": "Files",
+      "weight": 5,
+      "status": "done",
+      "shipped": "01-01",
+      "note": "Streamed, atomic .part to rename, collision-safe"
+    },
+    {
+      "id": "reveal",
+      "name": "Reveal a recording in Explorer",
+      "group": "Files",
+      "weight": 1,
+      "status": "done",
+      "shipped": "01-01"
+    },
+    {
+      "id": "library-browse",
+      "name": "Browse recordings in-app",
+      "group": "Files",
+      "weight": 4,
+      "status": "todo"
+    },
+    {
+      "id": "library-delete",
+      "name": "Delete a recording",
+      "group": "Files",
+      "weight": 2,
+      "status": "todo"
+    },
+    {
+      "id": "quality-picker",
+      "name": "Choose recording quality",
+      "group": "Settings",
+      "weight": 2,
+      "status": "done",
+      "note": "Three presets, persisted in userData; Balanced states its motion cost",
+      "shipped": "01-03"
+    }
+  ],
+  "foundation": [
+    {
+      "name": "Build tooling, IPC bridge, strict typing",
+      "status": "done",
+      "shipped": "01-01"
+    },
+    {
+      "name": "Streaming save pipeline (begin/append/finish/abort)",
+      "status": "done",
+      "shipped": "01-01"
+    },
+    {
+      "name": "Atomic writes + filename collision safety",
+      "status": "done",
+      "shipped": "01-01"
+    },
+    {
+      "name": "Primary-display correlation (multi-monitor correct)",
+      "status": "done",
+      "shipped": "01-01"
+    },
+    {
+      "name": "Capture benchmark with jitter measurement",
+      "status": "done",
+      "shipped": "01-02"
+    },
+    {
+      "name": "Interrupted-recording recovery",
+      "status": "done",
+      "shipped": "01-02"
+    },
+    {
+      "name": "Packaging / installer",
+      "status": "todo"
+    },
+    {
+      "name": "Persisted error log",
+      "status": "todo"
+    }
+  ]
+}

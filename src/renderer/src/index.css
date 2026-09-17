@@ -1,0 +1,283 @@
+/*
+ * One bold element: the record trigger. Everything else stays quiet.
+ * Dark ground because a recorder is used over other work -- a bright panel
+ * flashing on screen is exactly what you don't want while capturing.
+ */
+
+:root {
+  --ink: #f2f3f7;
+  --ink-dim: #8a8fa3;
+  --ground: #12131a;
+  --raised: #1b1d27;
+  --live: #ff4d4d;
+  --edge: #2a2d3a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.shell {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 36px 24px 18px;
+  gap: 26px;
+}
+
+.stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 26px;
+}
+
+/* The trigger. Round, physical, unmistakable. */
+.trigger {
+  width: 148px;
+  height: 148px;
+  border-radius: 50%;
+  border: 2px solid var(--edge);
+  background: var(--raised);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    transform 140ms ease;
+}
+
+.trigger:hover:not(:disabled) {
+  border-color: #3b3f52;
+}
+
+.trigger:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.trigger:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.trigger:focus-visible {
+  outline: 3px solid #6f8cff;
+  outline-offset: 4px;
+}
+
+.trigger__glyph {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: var(--live);
+  transition:
+    border-radius 160ms ease,
+    width 160ms ease,
+    height 160ms ease;
+}
+
+.trigger.is-recording .trigger__glyph {
+  width: 46px;
+  height: 46px;
+  border-radius: 6px;
+}
+
+.trigger.is-recording {
+  border-color: var(--live);
+}
+
+.readout {
+  margin: 0;
+  min-height: 1.5em;
+  color: var(--ink-dim);
+  font-size: 15px;
+  text-align: center;
+  max-width: 46ch;
+}
+
+/* Tabular figures stop the timer jittering as digits change. */
+.clock {
+  color: var(--ink);
+  font-size: 30px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+/*
+ * Quality picker.
+ *
+ * Deliberately quiet: the record trigger is where this screen spends its one bold
+ * element, so selection reads as a raised, bordered surface rather than another
+ * hit of the red accent. Sentence case throughout -- tracked-out capitals are the
+ * commonest tell of a generated interface.
+ */
+.quality {
+  border: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  max-width: 640px;
+  width: 100%;
+}
+
+.quality__legend {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 0;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: var(--ink-dim);
+}
+
+.quality__lockNote {
+  color: #6f7488;
+  font-size: 12px;
+}
+
+.quality__options {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+@media (max-width: 560px) {
+  .quality__options {
+    grid-template-columns: 1fr;
+  }
+}
+
+.quality__option {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 11px 13px;
+  border: 1px solid var(--edge);
+  border-radius: 9px;
+  background: transparent;
+  cursor: pointer;
+  transition: border-color 120ms ease;
+}
+
+/* The native control stays in the DOM for semantics and keyboard behaviour. */
+.quality__option input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.quality__option:hover {
+  border-color: #3b3f52;
+}
+
+.quality__option.is-selected {
+  border-color: #5a6080;
+  background: var(--raised);
+}
+
+.quality__option:focus-within {
+  outline: 2px solid #6f8cff;
+  outline-offset: 2px;
+}
+
+.quality:disabled .quality__option {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.quality:disabled .quality__option:hover {
+  border-color: var(--edge);
+}
+
+.quality__name {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.quality__rec {
+  font-size: 11px;
+  color: #8fa6ff;
+}
+
+.quality__note {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--ink-dim);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quality__option {
+    transition: none;
+  }
+}
+
+.saved {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 11px 16px;
+  background: var(--raised);
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  max-width: 100%;
+}
+
+.saved__name {
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #8fa6ff;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  flex-shrink: 0;
+}
+
+.link:focus-visible {
+  outline: 2px solid #6f8cff;
+  outline-offset: 3px;
+}
+
+.where {
+  color: var(--ink-dim);
+  font-size: 12px;
+  text-align: center;
+  word-break: break-all;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trigger,
+  .trigger__glyph {
+    transition: none;
+  }
+}

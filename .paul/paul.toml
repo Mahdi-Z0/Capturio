@@ -1,0 +1,32 @@
+name = "ScreenRecorder"
+version = "0.1.0"
+status = "active"
+path = "Projects/vsc/ScreenRecorder"
+tags = []
+
+[paul]
+version = "1.4.0"
+source = "https://chrisai.cv/skool"
+
+[milestone]
+name = "v0.1 Full-Screen Capture"
+version = "0.1.0"
+status = "in_progress"
+phases = 1
+
+[phase]
+number = 1
+name = "Capture to Disk"
+status = "complete"
+plans_completed = 3
+
+[loop]
+position = "IDLE"
+
+[satellite]
+groom = true
+
+[stats]
+total_plans = 3
+total_phases = 0
+last_activity = "2026-09-17T08:20:00Z"
