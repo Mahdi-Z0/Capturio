@@ -26,8 +26,8 @@ without leaving the app.
 | ------------ | ------------ |
 | Type         | Application  |
 | Version      | 0.1.0        |
-| Status       | Initializing |
-| Last Updated | 2026-09-16   |
+| Status       | v0.1 shipped |
+| Last Updated | 2026-09-17   |
 
 ## Requirements
 
@@ -41,15 +41,23 @@ without leaving the app.
 
 ### Validated (Shipped)
 
-None yet.
+**v0.1 Full-Screen Capture — Phase 1 complete 2026-09-17**
+
+- [x] Record the primary screen and save a playable file — _01-01_
+- [x] Capture at 60 fps with stable frame intervals — _01-02_
+- [x] Recordings survive crash or power loss, reclaimed at startup — _01-02_
+- [x] Choose recording quality from three presets, persisted — _01-03_
+- [x] Reveal a recording in Explorer — _01-01_
 
 ### Active (In Progress)
 
-None yet.
+None — Phase 1 closed.
 
 ### Planned (Next)
 
-- v0.1: full-screen capture saved to disk and replayable
+- Recordings library: browse, play, delete in-app
+- Window and region selection — **blocked**: window capture measures 1.1 fps
+- Audio: system, microphone, both mixed
 
 ### Out of Scope
 
@@ -107,9 +115,10 @@ root for architecture rules and the capture/audio approach.
 
 | Metric                                                    | Target  | Current | Status      |
 | --------------------------------------------------------- | ------- | ------- | ----------- |
-| v0.1: full-screen capture saved to disk and replayable     | Works   | -       | Not started |
-| Recording start is reachable within two clicks of launch   | ≤2      | -       | Not started |
-| A recording plays back correctly in Windows Media Player   | Plays   | -       | Not started |
+| v0.1: full-screen capture saved to disk and replayable     | Works   | Works   | **Achieved** |
+| Recording start is reachable within two clicks of launch   | ≤2      | 1 click | **Achieved** |
+| A recording plays back correctly in Windows Media Player   | Plays   | Plays   | **Achieved** |
+| Captured frame interval jitter                             | low     | 5.4 ms  | **Achieved** (was 8.4 ms) |
 
 ## Tech Stack / Tools
 
@@ -142,4 +151,4 @@ Quick Reference:
 ---
 
 _PROJECT.md — Updated when requirements or context change_
-_Last updated: 2026-09-16_
+_Last updated: 2026-09-17_

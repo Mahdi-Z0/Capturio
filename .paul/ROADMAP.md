@@ -15,7 +15,7 @@ resulting files from a built-in library.
 ## Current Milestone
 
 **v0.1 Full-Screen Capture** (v0.1.0)
-Status: Phase 1 complete — awaiting transition
+Status: ✅ Shipped 2026-09-17
 Phases: 1 of 1 complete
 
 **Milestone goal:** Record the full screen with no audio and save a playable file to disk.
