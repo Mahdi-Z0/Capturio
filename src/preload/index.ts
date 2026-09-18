@@ -1,5 +1,11 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { CaptureSource, DisplayInfo, QualityPreset, Recording } from '../shared/types.js';
+import type {
+  CaptureSource,
+  DisplayInfo,
+  QualityPreset,
+  Recording,
+  RecordingListItem,
+} from '../shared/types.js';
 
 /**
  * Only this explicit surface crosses the context bridge.
@@ -24,6 +30,12 @@ const api = {
     ipcRenderer.invoke('recordings:finish', recordingId),
   abortRecording: (recordingId: string): Promise<void> =>
     ipcRenderer.invoke('recordings:abort', recordingId),
+
+  listRecordings: (): Promise<RecordingListItem[]> => ipcRenderer.invoke('recordings:list'),
+  deleteRecording: (filePath: string, permanent: boolean): Promise<void> =>
+    ipcRenderer.invoke('recordings:delete', filePath, permanent),
+  openRecordingExternally: (filePath: string): Promise<void> =>
+    ipcRenderer.invoke('recordings:open-external', filePath),
 
   revealRecording: (filePath: string): Promise<void> =>
     ipcRenderer.invoke('recordings:reveal', filePath),

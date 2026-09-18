@@ -18,9 +18,12 @@ export default tseslint.config(
     },
   },
   {
-    // Dev-only benchmark scripts: plain CommonJS run by Electron, not part of the
-    // app bundle and not covered by either tsconfig.
-    files: ['scripts/**/*.cjs'],
+    // Plain CommonJS: dev scripts, plus `src/main/recordingPath.cjs`.
+    //
+    // That one is CJS deliberately -- scripts/verify-guards.cjs requires it
+    // directly, with no build step, so the verifier and the shipped protocol
+    // handler share one implementation rather than two that can drift.
+    files: ['scripts/**/*.cjs', 'src/**/*.cjs'],
     languageOptions: {
       sourceType: 'commonjs',
       globals: {
@@ -33,6 +36,9 @@ export default tseslint.config(
         clearTimeout: 'readonly',
         setInterval: 'readonly',
         clearInterval: 'readonly',
+        URL: 'readonly',
+        Response: 'readonly',
+        fetch: 'readonly',
       },
     },
     rules: {

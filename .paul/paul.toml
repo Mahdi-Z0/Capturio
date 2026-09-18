@@ -15,18 +15,20 @@ status = "in_progress"
 phases = 1
 
 [phase]
-number = 1
-name = "Capture to Disk"
-status = "complete"
-plans_completed = 3
+number = 2
+name = "Recordings Library"
+status = "in_progress"
+plans_completed = 1
 
 [loop]
-position = "IDLE"
+position = "PLAN"
+plan = "02-02"
+plan_path = "phases/02-recordings-library/02-02-PLAN.md"
 
 [satellite]
 groom = true
 
 [stats]
-total_plans = 3
-total_phases = 0
-last_activity = "2026-09-17T08:20:00Z"
+total_plans = 4
+total_phases = 1
+last_activity = "2026-09-17T11:00:00Z"

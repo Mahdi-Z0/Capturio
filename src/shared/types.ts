@@ -22,6 +22,29 @@ export interface Recording {
 }
 
 /**
+ * A recording as the library sees it.
+ *
+ * Separate from `Recording` (what the save path returns) because the library adds
+ * fields the save path never sets: `modifiedAt` is the sort key, and `playbackUrl`
+ * is a custom-protocol URL rather than a filesystem path. Duration is absent here
+ * on purpose -- `stat` cannot supply it, so the renderer fills it in later.
+ */
+export interface RecordingListItem {
+  fileName: string;
+  filePath: string;
+  /** Custom-protocol URL. The renderer CSP forbids file://, so never build one. */
+  playbackUrl: string;
+  modifiedAt: string;
+  sizeBytes: number;
+}
+
+/** Extensions the library lists and the protocol handler is willing to serve. */
+export const PLAYABLE_EXTENSIONS: readonly string[] = ['.webm', '.mp4'];
+
+/** Scheme used to stream recordings to the renderer without loosening the CSP. */
+export const RECORDING_SCHEME = 'recording';
+
+/**
  * Exposed on window.api by the preload script.
  *
  * The recording lifecycle is deliberately streamed rather than a single save call:
@@ -99,6 +122,10 @@ export interface RecorderApi {
   appendChunk(recordingId: string, chunk: ArrayBuffer): Promise<void>;
   finishRecording(recordingId: string): Promise<Recording>;
   abortRecording(recordingId: string): Promise<void>;
+
+  listRecordings(): Promise<RecordingListItem[]>;
+  deleteRecording(filePath: string, permanent: boolean): Promise<void>;
+  openRecordingExternally(filePath: string): Promise<void>;
 
   revealRecording(filePath: string): Promise<void>;
   getRecordingsDir(): Promise<string>;

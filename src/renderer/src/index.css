@@ -36,9 +36,9 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 36px 24px 18px;
-  gap: 26px;
+  justify-content: flex-start;
+  padding: 32px 24px 20px;
+  gap: 24px;
 }
 
 .stage {
@@ -278,6 +278,206 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .trigger,
   .trigger__glyph {
+    transition: none;
+  }
+}
+
+/*
+ * Library.
+ *
+ * The record trigger stays the one bold element; the library is a quiet surface
+ * below it. Tiles carry a reserved thumbnail area so 02-02 can fill it without
+ * relaying out the grid.
+ */
+.library {
+  width: 100%;
+  max-width: 900px;
+  border-top: 1px solid var(--edge);
+  padding-top: 20px;
+}
+
+.library__heading {
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-dim);
+}
+
+.library__empty {
+  margin: 0;
+  padding: 22px 0;
+  color: var(--ink-dim);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+  max-width: 48ch;
+  margin-inline: auto;
+}
+
+.library__error {
+  margin: 0 0 12px;
+  padding: 9px 12px;
+  border: 1px solid #5c2a2a;
+  border-radius: 8px;
+  background: #241a1c;
+  color: #ffb4b4;
+  font-size: 13px;
+}
+
+.player {
+  margin-bottom: 16px;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #0c0d13;
+}
+
+.player__video {
+  display: block;
+  width: 100%;
+  max-height: 46vh;
+  background: #000;
+}
+
+.player__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 13px;
+  background: var(--raised);
+}
+
+.player__name {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.link--danger {
+  color: #ff8d8d;
+}
+
+/* Widening on confirm makes the state change unmissable without a dialog. */
+.link--danger.is-confirming {
+  color: #fff;
+  background: #7d2626;
+  text-decoration: none;
+  padding: 3px 9px;
+  border-radius: 6px;
+}
+
+.tiles {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--edge);
+  border-radius: 9px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms ease;
+}
+
+.tile:hover {
+  border-color: #3b3f52;
+}
+
+.tile.is-selected {
+  border-color: #5a6080;
+  background: var(--raised);
+}
+
+.tile:focus-visible {
+  outline: 2px solid #6f8cff;
+  outline-offset: 2px;
+}
+
+/* Reserved for thumbnails (02-02). Sized now so filling it causes no reflow. */
+.tile__thumb {
+  display: block;
+  aspect-ratio: 16 / 9;
+  border-radius: 5px;
+  background: #0c0d13;
+  border: 1px solid #23252f;
+}
+
+.tile__name {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tile__meta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  color: var(--ink-dim);
+}
+
+/* A rule, not a middle dot: the dot-joined meta string is a generated-UI tell. */
+.tile__sep {
+  width: 1px;
+  height: 9px;
+  background: #3a3e4d;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tile {
+    transition: none;
+  }
+}
+
+/* Expands the list in place rather than navigating away from the record button. */
+.library__more {
+  display: block;
+  margin: 12px auto 0;
+  padding: 7px 14px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 120ms ease;
+}
+
+.library__more:hover {
+  border-color: #3b3f52;
+  color: var(--ink);
+}
+
+.library__more:focus-visible {
+  outline: 2px solid #6f8cff;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .library__more {
     transition: none;
   }
 }

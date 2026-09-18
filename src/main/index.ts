@@ -1,10 +1,45 @@
-import { app, BrowserWindow, desktopCapturer, ipcMain, screen, session, shell } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  desktopCapturer,
+  ipcMain,
+  net,
+  protocol,
+  screen,
+  session,
+  shell,
+} from 'electron';
 import { createWriteStream, mkdirSync, type WriteStream } from 'node:fs';
 import { stat, rename, unlink, readdir, access, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve, sep, extname } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { CaptureSource, DisplayInfo, QualityPreset, Recording } from '../shared/types.js';
-import { DEFAULT_QUALITY, isQualityPreset } from '../shared/types.js';
+import { pathToFileURL } from 'node:url';
+import { resolveRecordingRequest } from './recordingPath.cjs';
+import type {
+  CaptureSource,
+  DisplayInfo,
+  QualityPreset,
+  Recording,
+  RecordingListItem,
+} from '../shared/types.js';
+import {
+  DEFAULT_QUALITY,
+  isQualityPreset,
+  PLAYABLE_EXTENSIONS,
+  RECORDING_SCHEME,
+} from '../shared/types.js';
+
+/**
+ * Privileged scheme registration MUST happen before app ready.
+ * `stream: true` enables range requests, without which seeking in a long
+ * recording does not work; `supportFetchAPI` lets the handler use net.fetch.
+ */
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: RECORDING_SCHEME,
+    privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true },
+  },
+]);
 
 // --- Recordings directory ------------------------------------------------------
 //
@@ -305,6 +340,65 @@ function reportMemory(): void {
   );
 }
 
+// --- Path safety ---------------------------------------------------------------
+
+/**
+ * Resolve a caller-supplied path and confirm it sits inside the recordings folder.
+ *
+ * Four handlers now accept a path from the renderer. One shared check is the only
+ * way they stay consistent as that number grows.
+ *
+ * Separator-aware: a bare startsWith on the directory string would also accept a
+ * sibling such as ...\ScreenRecorder-elsewhere\x.mp4.
+ */
+function resolveInsideRecordings(channel: string, filePath: unknown): string {
+  if (typeof filePath !== 'string' || filePath.length === 0) {
+    fail(channel, new Error('Path must be a non-empty string'));
+  }
+  const target = resolve(filePath);
+  const root = resolve(getRecordingsDir()) + sep;
+  if (!target.startsWith(root)) {
+    fail(channel, new Error('Refusing to act on a path outside the recordings folder'));
+  }
+  return target;
+}
+
+const isPlayable = (p: string): boolean =>
+  PLAYABLE_EXTENSIONS.includes(extname(p).toLowerCase());
+
+// --- Playback protocol ---------------------------------------------------------
+//
+// The renderer CSP is `media-src 'self' blob:`, so a <video> cannot load file://.
+// Widening the CSP would let any renderer content read arbitrary local files
+// forever, purely to make a video player work -- a bad trade. This scheme serves
+// recordings and nothing else.
+//
+// It is reachable from renderer content, so its input is untrusted.
+
+function registerRecordingProtocol(): void {
+  protocol.handle(RECORDING_SCHEME, async (request) => {
+    // Thin wrapper. All validation lives in recordingPath.cjs, which
+    // scripts/verify-guards.cjs imports directly -- one implementation, so the
+    // verifier cannot drift from what actually ships.
+    const decision = resolveRecordingRequest(request.url, getRecordingsDir());
+
+    if (!decision.ok) {
+      console.error(`[${RECORDING_SCHEME}] refused (${decision.reason}): ${request.url}`);
+      // Deliberately opaque: a descriptive error would report filesystem layout
+      // back to whatever made the request.
+      return new Response('Not found', { status: 404 });
+    }
+
+    try {
+      await access(decision.filePath);
+    } catch {
+      console.error(`[${RECORDING_SCHEME}] no such recording: ${decision.fileName}`);
+      return new Response('Not found', { status: 404 });
+    }
+    return net.fetch(pathToFileURL(decision.filePath).toString());
+  });
+}
+
 // --- Capture source selection --------------------------------------------------
 
 /**
@@ -473,17 +567,94 @@ function registerIpc(): void {
   });
 
   ipcMain.handle('recordings:reveal', (_e, filePath: unknown): void => {
-    if (typeof filePath !== 'string') {
-      fail('recordings:reveal', new Error('Path must be a string'));
+    shell.showItemInFolder(resolveInsideRecordings('recordings:reveal', filePath));
+  });
+
+  /**
+   * List the folder. No index: a file added or removed outside the app shows up
+   * on the next read, and there is nothing to migrate or repair.
+   */
+  ipcMain.handle('recordings:list', async (): Promise<RecordingListItem[]> => {
+    const dir = getRecordingsDir();
+    let names: string[];
+    try {
+      names = await readdir(dir);
+    } catch {
+      // A missing folder is an empty library, not an error (AC-2).
+      return [];
     }
-    const target = resolve(filePath);
-    // Separator-aware: a bare startsWith on the directory would also accept a
-    // sibling like ...\ScreenRecorder-elsewhere\x.mp4.
-    const root = resolve(getRecordingsDir()) + sep;
-    if (!target.startsWith(root)) {
-      fail('recordings:reveal', new Error('Refusing to reveal a path outside the recordings folder'));
+
+    const items: RecordingListItem[] = [];
+    for (const name of names) {
+      // .part files are in-flight or unrecovered, not library content.
+      if (!isPlayable(name)) continue;
+      const filePath = join(dir, name);
+      try {
+        const info = await stat(filePath);
+        if (!info.isFile()) continue;
+        items.push({
+          fileName: name,
+          filePath,
+          playbackUrl: `${RECORDING_SCHEME}://f/${encodeURIComponent(name)}`,
+          modifiedAt: info.mtime.toISOString(),
+          sizeBytes: info.size,
+        });
+      } catch {
+        // Vanished between readdir and stat. Skip it rather than fail the list.
+      }
     }
-    shell.showItemInFolder(target);
+
+    // Modified time, not birth time: a recovered recording was renamed from .part,
+    // so its birth time predates the content while mtime reflects when it finished.
+    items.sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
+    return items;
+  });
+
+  ipcMain.handle(
+    'recordings:delete',
+    async (_e, filePath: unknown, permanent: unknown): Promise<void> => {
+      const target = resolveInsideRecordings('recordings:delete', filePath);
+
+      // The .part exclusion in the list is a UI convenience, not a guarantee --
+      // this handler is callable regardless of what the UI offers, and a delete
+      // landing mid-write would corrupt a live recording.
+      for (const rec of active.values()) {
+        if (resolve(rec.finalPath) === target || resolve(rec.partPath) === target) {
+          fail('recordings:delete', new Error('That recording is still being written'));
+        }
+      }
+
+      if (permanent === true) {
+        try {
+          await unlink(target);
+        } catch (err) {
+          fail('recordings:delete', err);
+        }
+        return;
+      }
+
+      try {
+        await shell.trashItem(target);
+      } catch (err) {
+        // Never fall back to unlink. trashItem rejects on network drives and
+        // volumes without a Recycle Bin; silently destroying the file instead
+        // would defeat the entire reason the recoverable path is the default.
+        const detail = err instanceof Error ? err.message : String(err);
+        fail(
+          'recordings:delete',
+          new Error(
+            `Could not move the recording to the Recycle Bin (${detail}). The file was left in place.`,
+          ),
+        );
+      }
+    },
+  );
+
+  ipcMain.handle('recordings:open-external', async (_e, filePath: unknown): Promise<void> => {
+    const target = resolveInsideRecordings('recordings:open-external', filePath);
+    const err = await shell.openPath(target);
+    // openPath resolves with an error STRING rather than rejecting.
+    if (err) fail('recordings:open-external', new Error(err));
   });
 }
 
@@ -522,6 +693,7 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   registerDisplayMediaHandler();
+  registerRecordingProtocol();
   registerIpc();
   // Reclaim anything a previous crash left behind, before a new recording starts.
   void recoverOrphanedParts();

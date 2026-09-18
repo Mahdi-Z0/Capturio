@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRecorder } from './useRecorder.js';
+import Library from './Library.js';
 import { DEFAULT_QUALITY, QUALITY_PRESETS, type QualityPreset } from '../../shared/types.js';
 
 function formatElapsed(ms: number): string {
@@ -90,18 +91,10 @@ export default function App(): React.JSX.Element {
         </div>
       </fieldset>
 
-      {lastSaved && (
-        <div className="saved">
-          <span className="saved__name">{lastSaved.fileName}</span>
-          <button
-            type="button"
-            className="link"
-            onClick={() => void window.api.revealRecording(lastSaved.filePath)}
-          >
-            Show in folder
-          </button>
-        </div>
-      )}
+      {/* The saved-file row was removed with the library: a new recording now
+          appears at the top of the list, which is the same confirmation without
+          a second element competing for the same job. */}
+      <Library refreshKey={lastSaved?.filePath ?? null} />
 
       <footer className="where">
         {captureInfo && activePreset ? (

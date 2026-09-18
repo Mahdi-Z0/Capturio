@@ -80,14 +80,18 @@
       "name": "Browse recordings in-app",
       "group": "Files",
       "weight": 4,
-      "status": "todo"
+      "status": "done",
+      "shipped": "02-01",
+      "note": "3 most recent shown, expandable; inline playback plus open-in-default-player"
     },
     {
       "id": "library-delete",
       "name": "Delete a recording",
       "group": "Files",
       "weight": 2,
-      "status": "todo"
+      "status": "done",
+      "shipped": "02-01",
+      "note": "Recycle Bin by default, permanent behind a two-step confirm"
     },
     {
       "id": "quality-picker",

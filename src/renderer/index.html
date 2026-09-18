@@ -3,9 +3,26 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      media-src includes `recording:` so the library can play files through the
+      app's own protocol handler. User-authorised 2026-09-17 after the 02-01
+      boundary stop.
+
+      This is NOT the same as allowing `file:`. `file:` would let any renderer
+      content read every file on the machine, forever. `recording:` reaches one
+      handler that accepts a bare filename only -- no separators, no `..`, no
+      drive letters, no UNC, decoded exactly once, extension allow-listed, and
+      resolved inside the recordings folder. See registerRecordingProtocol().
+
+      The rejected alternative was loading whole recordings into memory as blobs,
+      which would undo the streaming save architecture 01-01 was built around: a
+      5-minute capture is roughly 750 MB.
+
+      Do not add `file:` here.
+    -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; media-src 'self' blob:"
+      content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; media-src 'self' blob: recording:"
     />
     <title>Screen Recorder</title>
   </head>

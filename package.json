@@ -15,6 +15,7 @@
     "format:check": "prettier --check .",
     "bench:capture": "electron scripts/bench-capture.cjs",
     "progress": "node scripts/progress.cjs",
+    "verify:guards": "node scripts/verify-guards.cjs",
     "dist": "npm run build && electron-builder --win --publish never",
     "dist:store": "npm run build && electron-builder --win appx --publish never"
   },

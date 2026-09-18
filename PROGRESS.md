@@ -5,19 +5,19 @@ _Last generated: 2026-09-17_
 
 ## Overall
 
-**35% of declared features**, by effort weight.
+**50% of declared features**, by effort weight.
 
 ```
-███████░░░░░░░░░░░░░ 35%
+██████████░░░░░░░░░░ 50%
 ```
 
 | Measure | Value |
 | --- | --- |
-| Feature completion (weighted) | 35% — 14 of 40 points |
-| Plans completed | 3 of 3 defined (100%) |
+| Feature completion (weighted) | 50% — 20 of 40 points |
+| Plans completed | 4 of 5 defined (80%) |
 | Foundation items done | 6 of 8 |
 | Current milestone | v0.1 Full-Screen Capture |
-| Current phase | Capture to Disk (complete) |
+| Current phase | Recordings Library (in_progress) |
 | Loop position | IDLE |
 
 > **What this percentage does and does not mean.** It measures the core features declared in
@@ -46,14 +46,14 @@ _Last generated: 2026-09-17_
 | ⬜ | Record microphone | Not started | — |  |
 | ⬜ | Record system + mic together | Not started | — | Must mix in Web Audio; MediaRecorder takes only one audio track |
 
-### Files — 50%
+### Files — 100%
 
 | | Feature | Status | Shipped in | Note |
 | --- | --- | --- | --- | --- |
 | ✅ | Save recordings to disk | Done | 01-01 | Streamed, atomic .part to rename, collision-safe |
 | ✅ | Reveal a recording in Explorer | Done | 01-01 |  |
-| ⬜ | Browse recordings in-app | Not started | — |  |
-| ⬜ | Delete a recording | Not started | — |  |
+| ✅ | Browse recordings in-app | Done | 02-01 | 3 most recent shown, expandable; inline playback plus open-in-default-player |
+| ✅ | Delete a recording | Done | 02-01 | Recycle Bin by default, permanent behind a two-step confirm |
 
 ### Settings — 100%
 
@@ -65,6 +65,8 @@ _Last generated: 2026-09-17_
 
 | | Plan | Description |
 | --- | --- | --- |
+| ✅ | 02-01 | Library core — browse, play, delete |
+| ⬜ | 02-02 | Thumbnail generation and caching |
 | ✅ | 01-01 | Full-screen capture saved to disk |
 | ✅ | 01-02 | Capture frame-rate research — judder root-caused, 60 fps applied |
 | ✅ | 01-03 | Recording quality picker — three presets, persisted |

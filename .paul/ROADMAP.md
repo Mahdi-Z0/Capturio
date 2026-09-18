@@ -12,22 +12,54 @@ A Windows desktop screen recorder built with Electron. It captures the full scre
 window, or a selected region, with system audio, microphone, both, or none, and manages the
 resulting files from a built-in library.
 
-## Current Milestone
+## Milestones
 
-**v0.1 Full-Screen Capture** (v0.1.0)
-Status: ✅ Shipped 2026-09-17
-Phases: 1 of 1 complete
+| Version | Name               | Phases | Status         | Completed  |
+| ------- | ------------------ | ------ | -------------- | ---------- |
+| v0.1    | Full-Screen Capture | 1      | ✅ Shipped     | 2026-09-17 |
+| v0.2    | Recordings Library  | 2      | 🚧 In Progress | -          |
 
-**Milestone goal:** Record the full screen with no audio and save a playable file to disk.
+## 🚧 Current Milestone: v0.2 Recordings Library
 
-This deliberately narrow slice forces the three decisions everything else depends on: the capture
-stream, the container/codec choice, and the save path.
+**Goal:** Find, play, and delete recordings without leaving the app — the second half of the core
+value, and the last piece that does not depend on the blocked window-capture path.
 
 ## Phases
 
-| Phase | Name            | Plans | Status      | Completed |
-| ----- | --------------- | ----- | ----------- | --------- |
-| 1     | Capture to Disk | 3     | Complete    | 2026-09-17 |
+| Phase | Name               | Plans | Status      | Completed  |
+| ----- | ------------------ | ----- | ----------- | ---------- |
+| 1     | Capture to Disk    | 3     | ✅ Complete | 2026-09-17 |
+| 2     | Recordings Library | 2     | In progress | -          |
+
+## Phase Details
+
+### Phase 2: Recordings Library
+
+**Goal:** Browse recordings in-app, play them inline or in the system player, and delete them
+safely.
+**Depends on:** Phase 1 (recordings directory, save pipeline, reveal handler)
+**Research:** Unlikely — one known constraint, handled below
+
+**Scope:**
+
+- List recordings by reading the folder, with name, date, size and duration
+- Inline playback, plus "open in default player"
+- Delete to the Recycle Bin, with a permanent option
+- Thumbnail tiles
+
+**Known constraint:** the renderer's CSP is `media-src 'self' blob:`, so a `<video>` cannot load
+`file://`. Playback needs a custom protocol handler registered in main. Loosening the CSP instead
+would be the wrong trade.
+
+**Plans:**
+
+- [x] 02-01: Library core — browse, play, delete — _complete 2026-09-17_
+- [ ] 02-02: Thumbnail generation and caching
+
+Split because combined this is 4+ tasks, past the 2-3 guidance. 02-01 ships a usable library with
+placeholder tiles; 02-02 fills them. A thumbnail **cache** keyed by path and mtime does not violate
+the "no index file" decision: an index is authoritative metadata that drifts from reality, while a
+cache is derived, disposable, and regenerates itself when deleted.
 
 ## Phase Details
 
