@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AudioMode, QualityPreset, Recording } from '../../shared/types.js';
 import {
-  AUDIO_UNAVAILABLE_NOTE,
+  AUDIO_MODES,
+  audioShortfallNote,
+  DEFAULT_MIC_DEVICE,
   IDLE_HUD_STATE,
   DEFAULT_AUDIO_MODE,
   DEFAULT_QUALITY,
@@ -114,6 +116,76 @@ function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/**
+ * Open the microphone, or return null. Never throws: a missing mic costs the
+ * narration, not the recording.
+ *
+ * If the stored device has gone (unplugged, renamed by a driver update), falls
+ * back once to the Windows default rather than failing outright.
+ */
+async function acquireMic(deviceId: string): Promise<MediaStream | null> {
+  // Voice processing on: echo cancellation also stops the speakers bleeding into
+  // the mic in "both" mode, which would otherwise record the computer twice.
+  const processing = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+  const attempts: MediaTrackConstraints[] = deviceId
+    ? [{ ...processing, deviceId: { exact: deviceId } }, processing]
+    : [processing];
+
+  for (const audio of attempts) {
+    try {
+      return await navigator.mediaDevices.getUserMedia({ audio, video: false });
+    } catch (err) {
+      console.error('[mic] could not open microphone:', err);
+    }
+  }
+  return null;
+}
+
+/**
+ * Build the stream MediaRecorder will actually record.
+ *
+ * Two sources are mixed through Web Audio into ONE track: MediaRecorder records
+ * only the first audio track it is given and silently drops the rest. Each source
+ * gets its own gain node, at 1.0 today, so independent level controls can be
+ * added later without rebuilding the graph.
+ */
+function composeStream(
+  display: MediaStream,
+  mic: MediaStream | null,
+): { stream: MediaStream; cleanup: () => void } {
+  const video = display.getVideoTracks()[0];
+  const system = display.getAudioTracks()[0] ?? null;
+  const voice = mic?.getAudioTracks()[0] ?? null;
+
+  let ctx: AudioContext | null = null;
+  let audio: MediaStreamTrack | null = system ?? voice;
+
+  if (system && voice) {
+    ctx = new AudioContext();
+    void ctx.resume().catch(() => undefined);
+    const destination = ctx.createMediaStreamDestination();
+    for (const track of [system, voice]) {
+      const gain = ctx.createGain();
+      gain.gain.value = 1;
+      ctx.createMediaStreamSource(new MediaStream([track])).connect(gain).connect(destination);
+    }
+    audio = destination.stream.getAudioTracks()[0] ?? null;
+  }
+
+  const tracks = [video, audio].filter((t): t is MediaStreamTrack => Boolean(t));
+  return {
+    stream: new MediaStream(tracks),
+    cleanup: () => {
+      // The source tracks are not all in the composed stream (a mixed-away
+      // system track, for one), so stop the originals explicitly. A forgotten mic
+      // track keeps the Windows microphone indicator lit after recording ends.
+      display.getTracks().forEach((t) => t.stop());
+      mic?.getTracks().forEach((t) => t.stop());
+      void ctx?.close().catch(() => undefined);
+    },
+  };
+}
+
 /** What the capture actually negotiated, as opposed to what was requested. */
 export interface CaptureInfo {
   width: number;
@@ -124,6 +196,10 @@ export interface CaptureInfo {
   /** What the user asked for, and what the stream actually carried. */
   audioRequested: boolean;
   audioObtained: boolean;
+  /** Which sources ended up in the recording. */
+  audioSources: { system: boolean; microphone: boolean };
+  /** Set when a requested source did not arrive; says which and what remains. */
+  audioNote: string | null;
 }
 
 export interface RecorderState {
@@ -162,12 +238,16 @@ export function useRecorder(): RecorderState {
   // is a lie, and the timer is what people trust to know how long they have run.
   const pausedAtRef = useRef(0);
   const pausedTotalRef = useRef(0);
+  // Stops the original capture and mic tracks and closes any mixing graph.
+  const cleanupRef = useRef<(() => void) | null>(null);
   // Chunks are appended one at a time, in order. Without this the writes race.
   const queueRef = useRef<Promise<void>>(Promise.resolve());
 
   const releaseStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
+    cleanupRef.current?.();
+    cleanupRef.current = null;
     recorderRef.current = null;
     setPaused(false);
     setMuted(false);
@@ -251,38 +331,49 @@ export function useRecorder(): RecorderState {
     const presetKey = await window.api.getQuality().catch(() => DEFAULT_QUALITY);
     const preset = QUALITY_PRESETS[presetKey];
     const audioMode: AudioMode = await window.api.getAudioMode().catch(() => DEFAULT_AUDIO_MODE);
+    const spec = AUDIO_MODES[audioMode];
+    const micDevice = spec.microphone
+      ? await window.api.getMicDevice().catch(() => DEFAULT_MIC_DEVICE)
+      : DEFAULT_MIC_DEVICE;
 
-    let stream: MediaStream;
-    let audioRequested = false;
-    let audioObtained = false;
+    let display: MediaStream;
     try {
-      const got = await acquireWithAudio(preset.frameRate, audioMode === 'system');
-      stream = got.stream;
-      audioRequested = got.audioRequested;
-      audioObtained = got.audioObtained;
+      display = (await acquireWithAudio(preset.frameRate, spec.system)).stream;
     } catch (err) {
       setStatus('idle');
       setError(message(err));
       return;
     }
 
-    // Requested but absent: keep the recording, say so plainly (AC-5, AC-6).
-    if (audioRequested && !audioObtained) {
-      setError(AUDIO_UNAVAILABLE_NOTE);
-    }
+    const mic = spec.microphone ? await acquireMic(micDevice) : null;
+    const composed = composeStream(display, mic);
+    const stream = composed.stream;
+
+    // Report the sources that exist, never the setting that was chosen.
+    const obtained = {
+      system: display.getAudioTracks().length > 0,
+      microphone: Boolean(mic && mic.getAudioTracks().length > 0),
+    };
+    const audioNote = audioShortfallNote(spec, obtained);
+    const audioRequested = spec.system || spec.microphone;
+    const audioObtained = stream.getAudioTracks().length > 0;
+
+    // Keep the recording, say plainly what is missing.
+    if (audioNote) setError(audioNote);
 
     const { mimeType, ext } = pickContainer();
     let recordingId: string;
     try {
       recordingId = await window.api.beginRecording(ext);
     } catch (err) {
-      stream.getTracks().forEach((t) => t.stop());
+      composed.cleanup();
       setStatus('idle');
       setError(message(err));
       return;
     }
 
     streamRef.current = stream;
+    cleanupRef.current = composed.cleanup;
 
     idRef.current = recordingId;
     queueRef.current = Promise.resolve();
@@ -353,6 +444,8 @@ export function useRecorder(): RecorderState {
         codec: mimeType || 'default',
         audioRequested,
         audioObtained,
+        audioSources: obtained,
+        audioNote,
       });
     }
 

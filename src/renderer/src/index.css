@@ -565,3 +565,42 @@ body {
   color: var(--warn);
   letter-spacing: 0;
 }
+
+/* Microphone choice, under the sound picker. Native select: keyboard and screen
+   reader behaviour for free, and it matches the system the user already knows. */
+.micPicker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--ink-dim);
+}
+
+.micPicker__select {
+  min-width: 0;
+  max-width: 100%;
+  flex: 1;
+  padding: 7px 10px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: var(--raised);
+  color: var(--ink);
+  font: inherit;
+}
+
+.micPicker__select:focus-visible {
+  outline: 2px solid #6f8cff;
+  outline-offset: 2px;
+}
+
+.micPicker__select:disabled {
+  opacity: 0.45;
+}
+
+.micPicker__note {
+  flex-basis: 100%;
+  color: var(--warn);
+  font-size: 12px;
+}

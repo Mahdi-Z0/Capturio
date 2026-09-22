@@ -25,8 +25,8 @@ pause/resume and mute
 
 Progress:
 
-- Features: [███████░░░] 65% (30/46 pts) — inventory grew by 6 pts with the new controls
-- v0.3 Audio: [█████░░░░░] 50% (system audio done; microphone + mixing remain)
+- Features: [████████░░] 80% (37/46 pts)
+- v0.3 Audio: [██████████] 100% (none, computer, microphone, both)
 
 ## Loop Position
 
@@ -109,14 +109,13 @@ Protected for Plan 03-01:
 ## Session Continuity
 
 Last session: 2026-09-18
-Stopped at: 05-01 reopened and fixed (range support + keyframe-only cues); meter removed from the HUD at user request; awaiting re-verification
-Next action: User verifies seeking and the indicator; then commit, then microphone (03-02)
+Stopped at: 03-02 (microphone + mixing) built and verified in the built app; uncommitted. Phase 3 Audio complete pending user check
+Next action: User tries a microphone recording; commit 03-02; then decide between Phase 4 (window/region, blocked on 1.1 fps window capture) and thumbnails (02-02, parked)
 Resume file: .paul/phases/05-playback-and-controls/05-02-SUMMARY.md
 
 **Repository:** committed at 3546d68. Phases 1 and 2 tracked; working tree clean at commit.
 
-**Uncommitted:** 03-01, 05-01 and 05-02 are all in the working tree. Nothing since 3546d68 is
-committed.
+**Committed:** 03-01, 05-01, 05-02 at 7fbcde2 (not pushed). **Uncommitted:** 03-02.
 
 **Parked:** 02-02 thumbnails. Its validator and verifier shipped and are committed; the cache,
 generation and `__sim` hooks remain unbuilt. Plan and audit stay in place.

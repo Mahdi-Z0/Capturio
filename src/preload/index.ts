@@ -29,6 +29,10 @@ const api = {
   getAudioMode: (): Promise<AudioMode> => ipcRenderer.invoke('settings:get-audio'),
   setAudioMode: (mode: AudioMode): Promise<void> => ipcRenderer.invoke('settings:set-audio', mode),
 
+  getMicDevice: (): Promise<string> => ipcRenderer.invoke('settings:get-mic'),
+  setMicDevice: (deviceId: string): Promise<void> =>
+    ipcRenderer.invoke('settings:set-mic', deviceId),
+
   beginRecording: (ext: string): Promise<string> => ipcRenderer.invoke('recordings:begin', ext),
   appendChunk: (recordingId: string, chunk: ArrayBuffer): Promise<void> =>
     ipcRenderer.invoke('recordings:append', recordingId, chunk),

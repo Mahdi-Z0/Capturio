@@ -95,41 +95,87 @@ export const DEFAULT_QUALITY: QualityPreset = 'high';
 /**
  * What sound, if any, is recorded alongside the picture.
  *
- * Only the two modes this plan can honour. 'microphone' and 'both' arrive in
- * 03-02 with the Web Audio mixing they require -- a mode the UI offers but the
- * code cannot deliver is worse than one that is simply absent.
+ * `both` is a Web Audio mix, not two tracks: MediaRecorder silently records only
+ * the first audio track it is given, so two tracks would drop one without error.
  */
-export type AudioMode = 'none' | 'system';
+export type AudioMode = 'none' | 'system' | 'microphone' | 'both';
 
 export interface AudioModeSpec {
   label: string;
   blurb: string;
+  /** Which sources this mode draws on. Drives capture, the footer and warnings. */
+  system: boolean;
+  microphone: boolean;
 }
 
 export const AUDIO_MODES: Record<AudioMode, AudioModeSpec> = {
   none: {
     label: 'No audio',
     blurb: 'Picture only',
+    system: false,
+    microphone: false,
   },
   system: {
     label: 'Computer audio',
     // Names what is captured, not the mechanism. "WASAPI loopback" means
     // nothing to the person choosing.
     blurb: 'Whatever your computer is playing',
+    system: true,
+    microphone: false,
+  },
+  microphone: {
+    label: 'Microphone',
+    blurb: 'Your voice, nothing from the computer',
+    system: false,
+    microphone: true,
+  },
+  both: {
+    label: 'Computer and microphone',
+    blurb: 'Talk over whatever is playing',
+    system: true,
+    microphone: true,
   },
 };
+
+/** Display order in the picker: a 2x2 grid reading none/system, mic/both. */
+export const AUDIO_ORDER: AudioMode[] = ['none', 'system', 'microphone', 'both'];
+
+/** Empty string means "whatever Windows has set as the default microphone". */
+export const DEFAULT_MIC_DEVICE = '';
 
 /** Matches today's behaviour, so existing recordings do not silently change. */
 export const DEFAULT_AUDIO_MODE: AudioMode = 'none';
 
+const MIC_PRIVACY_HINT =
+  'Check that microphone access is on in Windows Settings > Privacy & security > Microphone.';
+
 /**
- * Shown when audio was asked for and none arrived. Lives here because the
- * recorder and the UI both say it, and two copies would drift apart.
+ * What to tell the user when some requested audio did not arrive, or null when
+ * everything asked for was obtained.
  *
- * States what happened and what the app did about it. It is not an apology, and
- * it never implies the recording failed -- the recording is fine, the sound is not.
+ * Names the source that failed and what the recording carries instead. Never an
+ * apology, and never implies the recording failed -- the picture is fine.
  */
-export const AUDIO_UNAVAILABLE_NOTE = 'Computer audio could not be captured. Recording video only.';
+export function audioShortfallNote(
+  requested: { system: boolean; microphone: boolean },
+  obtained: { system: boolean; microphone: boolean },
+): string | null {
+  const lostSystem = requested.system && !obtained.system;
+  const lostMic = requested.microphone && !obtained.microphone;
+  if (!lostSystem && !lostMic) return null;
+
+  if (lostSystem && lostMic) {
+    return `No audio could be captured. Recording video only. ${MIC_PRIVACY_HINT}`;
+  }
+  if (lostSystem) {
+    return obtained.microphone
+      ? 'Computer audio could not be captured. Recording the microphone only.'
+      : 'Computer audio could not be captured. Recording video only.';
+  }
+  return obtained.system
+    ? `The microphone could not be used. Recording computer audio only. ${MIC_PRIVACY_HINT}`
+    : `The microphone could not be used. Recording video only. ${MIC_PRIVACY_HINT}`;
+}
 
 export function isAudioMode(v: unknown): v is AudioMode {
   return typeof v === 'string' && Object.prototype.hasOwnProperty.call(AUDIO_MODES, v);
@@ -194,6 +240,10 @@ export interface RecorderApi {
 
   getAudioMode(): Promise<AudioMode>;
   setAudioMode(mode: AudioMode): Promise<void>;
+
+  /** Stored microphone deviceId; '' means the Windows default. */
+  getMicDevice(): Promise<string>;
+  setMicDevice(deviceId: string): Promise<void>;
 
   beginRecording(ext: string): Promise<string>;
   appendChunk(recordingId: string, chunk: ArrayBuffer): Promise<void>;

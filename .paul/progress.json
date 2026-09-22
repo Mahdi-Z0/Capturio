@@ -49,15 +49,18 @@
       "name": "Record microphone",
       "group": "Audio",
       "weight": 3,
-      "status": "todo"
+      "status": "done",
+      "shipped": "03-02",
+      "note": "Picker with Windows default; falls back if the chosen device is gone"
     },
     {
       "id": "audio-mix",
       "name": "Record system + mic together",
       "group": "Audio",
       "weight": 4,
-      "status": "todo",
-      "note": "Must mix in Web Audio; MediaRecorder takes only one audio track"
+      "status": "done",
+      "note": "Web Audio mix into one track, per-source gain at 1.0",
+      "shipped": "03-02"
     },
     {
       "id": "save-disk",

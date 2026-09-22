@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRecorder } from './useRecorder.js';
 import Library from './Library.js';
+import MicPicker from './MicPicker.js';
+import type { CaptureInfo } from './useRecorder.js';
 import {
   AUDIO_MODES,
-  AUDIO_UNAVAILABLE_NOTE,
+  AUDIO_ORDER,
   DEFAULT_AUDIO_MODE,
   DEFAULT_QUALITY,
   QUALITY_PRESETS,
@@ -21,7 +23,15 @@ function formatElapsed(ms: number): string {
 }
 
 const PRESET_ORDER: QualityPreset[] = ['balanced', 'high', 'maximum'];
-const AUDIO_ORDER: AudioMode[] = ['none', 'system'];
+
+/** The footer's audio clause: the sources that exist, never the setting chosen. */
+function describeAudio(info: CaptureInfo): string {
+  const { system, microphone } = info.audioSources;
+  if (system && microphone) return 'with computer audio and microphone';
+  if (system) return 'with computer audio';
+  if (microphone) return 'with microphone';
+  return info.audioRequested ? 'with no sound (audio was unavailable)' : 'with no sound';
+}
 
 export default function App(): React.JSX.Element {
   const {
@@ -74,10 +84,10 @@ export default function App(): React.JSX.Element {
     void window.api.setAudioMode(next).catch(() => undefined);
   }, []);
 
-  // Asked for sound, got none. Worth saying while it is still happening -- at idle
-  // the readout carries the same sentence as the error, so this covers the gap
-  // where the clock is showing and the error line is not.
-  const audioMissing = Boolean(captureInfo?.audioRequested && !captureInfo.audioObtained);
+  // A requested source did not arrive. Worth saying while it is still happening --
+  // at idle the readout carries the same sentence as the error, so this covers
+  // the gap where the clock is showing and the error line is not.
+  const audioNote = captureInfo?.audioNote ?? null;
 
   return (
     <main className="shell">
@@ -102,7 +112,7 @@ export default function App(): React.JSX.Element {
             </span>
           )}
           {status === 'idle' && (error ? error : 'Ready to record your main screen.')}
-          {locked && audioMissing && <span className="readout__warn">{AUDIO_UNAVAILABLE_NOTE}</span>}
+          {locked && audioNote && <span className="readout__warn">{audioNote}</span>}
         </p>
         {/* Mirrors the overlay indicator. The overlay is reachable while other
             windows are in front; this is reachable when the app itself is. */}
@@ -177,6 +187,7 @@ export default function App(): React.JSX.Element {
             );
           })}
         </div>
+        {AUDIO_MODES[audio].microphone && <MicPicker disabled={locked} />}
       </fieldset>
 
       {/* The saved-file row was removed with the library: a new recording now
@@ -188,12 +199,7 @@ export default function App(): React.JSX.Element {
         {captureInfo && activePreset ? (
           <span>
             Recording {captureInfo.width}×{captureInfo.height} at {captureInfo.frameRate} fps{' '}
-            {/* Reports the track that exists, never the setting that was chosen. */}
-            {captureInfo.audioObtained
-              ? 'with computer audio'
-              : captureInfo.audioRequested
-                ? 'with no sound (computer audio was unavailable)'
-                : 'with no sound'}
+            {describeAudio(captureInfo)}
             , using the {QUALITY_PRESETS[activePreset].label} preset (
             {Math.round(QUALITY_PRESETS[activePreset].videoBitsPerSecond / 1_000_000)} Mbps ceiling)
           </span>

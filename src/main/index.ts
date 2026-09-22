@@ -30,7 +30,7 @@ import {
   isAudioMode,
   isQualityPreset,
   PLAYABLE_EXTENSIONS,
-  RECORDING_SCHEME, isHudCommand,
+  RECORDING_SCHEME, isHudCommand, DEFAULT_MIC_DEVICE,
 } from '../shared/types.js';
 
 /**
@@ -249,13 +249,18 @@ async function recoverOrphanedParts(): Promise<number> {
 // v2 adds `audio`. A v1 file -- which is what is on disk today -- must keep its
 // quality preset and gain an audio default, then be rewritten. Bumping without
 // handling that would either throw on read or silently reset the user's choice.
-const SETTINGS_VERSION = 2;
+const SETTINGS_VERSION = 3;
 
 interface SettingsFile {
   version: number;
   quality: QualityPreset;
   audio: AudioMode;
+  /** deviceId of the chosen microphone; '' means the Windows default. */
+  micDevice: string;
 }
+
+/** A deviceId is an opaque token; bound its length rather than trusting it. */
+const isMicDevice = (v: unknown): v is string => typeof v === 'string' && v.length <= 512;
 
 const settingsPath = (): string => join(app.getPath('userData'), 'settings.json');
 
@@ -294,6 +299,7 @@ async function readSettings(): Promise<SettingsFile> {
     version: SETTINGS_VERSION,
     quality: DEFAULT_QUALITY,
     audio: DEFAULT_AUDIO_MODE,
+    micDevice: DEFAULT_MIC_DEVICE,
   };
 
   let raw: string;
@@ -313,12 +319,18 @@ async function readSettings(): Promise<SettingsFile> {
     return fallback;
   }
 
-  const obj = (parsed ?? {}) as { version?: unknown; quality?: unknown; audio?: unknown };
+  const obj = (parsed ?? {}) as {
+    version?: unknown;
+    quality?: unknown;
+    audio?: unknown;
+    micDevice?: unknown;
+  };
 
   // Each field is validated independently, so one bad value never discards the
   // other. A v1 file has no `audio` at all -- that is a migration, not corruption.
   const quality = isQualityPreset(obj.quality) ? obj.quality : DEFAULT_QUALITY;
   const audio = isAudioMode(obj.audio) ? obj.audio : DEFAULT_AUDIO_MODE;
+  const micDevice = isMicDevice(obj.micDevice) ? obj.micDevice : DEFAULT_MIC_DEVICE;
 
   if (!isQualityPreset(obj.quality)) {
     console.error(`[settings] unknown quality ${String(obj.quality)}; using ${DEFAULT_QUALITY}`);
@@ -328,10 +340,15 @@ async function readSettings(): Promise<SettingsFile> {
     console.log(`[settings] migrating v${String(obj.version)} -> v${SETTINGS_VERSION}`);
   }
 
-  const settings: SettingsFile = { version: SETTINGS_VERSION, quality, audio };
+  const settings: SettingsFile = { version: SETTINGS_VERSION, quality, audio, micDevice };
   // Rewrite on migration or on any rejected field, so a stale or broken file
   // heals once rather than being re-read and re-patched on every launch.
-  if (migrating || !isQualityPreset(obj.quality) || !isAudioMode(obj.audio)) {
+  if (
+    migrating ||
+    !isQualityPreset(obj.quality) ||
+    !isAudioMode(obj.audio) ||
+    !isMicDevice(obj.micDevice)
+  ) {
     void writeSettings(settings).catch(() => undefined);
   }
   return settings;
@@ -605,6 +622,23 @@ function registerIpc(): void {
   });
 
   ipcMain.handle('settings:get-audio', async (): Promise<AudioMode> => (await readSettings()).audio);
+
+  ipcMain.handle(
+    'settings:get-mic',
+    async (): Promise<string> => (await readSettings()).micDevice,
+  );
+
+  ipcMain.handle('settings:set-mic', async (_e, deviceId: unknown): Promise<void> => {
+    if (!isMicDevice(deviceId)) {
+      fail('settings:set-mic', new Error('Invalid microphone device id'));
+    }
+    try {
+      const current = await readSettings();
+      await writeSettings({ ...current, version: SETTINGS_VERSION, micDevice: deviceId });
+    } catch (err) {
+      fail('settings:set-mic', err);
+    }
+  });
 
   ipcMain.handle('settings:set-audio', async (_e, mode: unknown): Promise<void> => {
     if (!isAudioMode(mode)) {

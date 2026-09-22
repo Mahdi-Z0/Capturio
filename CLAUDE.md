@@ -10,8 +10,9 @@ clicks. When a choice arises between "powerful" and "obvious", pick obvious.
 library (browse, play, reveal, delete), crash recovery of `.part` files, seekable output, and the
 on-screen recording indicator with pause/resume and mute.
 
-**Not built:** microphone capture and system+mic mixing, window capture, region capture,
-thumbnails. Do not describe these as working.
+Audio: none, computer, microphone, and computer + microphone mixed, with a microphone picker.
+
+**Not built:** window capture, region capture, thumbnails. Do not describe these as working.
 
 ## Stack
 
@@ -113,9 +114,20 @@ nodes are what later allow independent system/mic level sliders, so wire them in
 **Audio modes** the UI must support: system only, mic only, both, none. "None" means omit the audio
 track entirely, not a muted track.
 
-Shipped so far: `none` and `system`. `AudioMode` in `src/shared/types.ts` deliberately does not
-declare `microphone` or `both` until the mixing code exists — a mode the UI offers but the recorder
-cannot honour is worse than one that is absent.
+All four ship. `composeStream()` in `useRecorder.ts` builds the recorded stream: one source passes
+straight through; two are mixed in Web Audio into a **single** track, each through its own
+`GainNode` at 1.0. Verified 2026-09-22 by decoding saved files with a 440 Hz tone playing: `none` has
+no audio track; `system` carries the tone; `microphone` carries room sound with the tone at ~0
+(echo cancellation keeps the speakers out); `both` carries both, in one track.
+
+The mic opens with echo cancellation, noise suppression and auto gain on. A stored device that has
+gone falls back once to the Windows default; a blocked mic costs the narration, never the
+recording, and `audioShortfallNote()` names which source failed and points at the Windows privacy
+setting.
+
+**Measuring recorded audio:** Web Audio outputs silence for media from another origin, and
+`recording:` is one. Routing the in-app player into an analyser reads all zeros even when the file
+is fine. Decode the file bytes directly instead.
 
 **Muting mid-recording sets `track.enabled = false`,** which records silence. Never stop the track
 instead: MediaRecorder cannot add one back, so unmuting would be impossible.
