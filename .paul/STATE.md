@@ -12,20 +12,21 @@ See: .paul/PROJECT.md (updated 2026-09-16)
 
 **Core value:** Record any part of a Windows screen with the right audio, and find, play, or
 delete the result without leaving the app.
-**Current focus:** v0.2 Recordings Library — Phase 2, plan 02-02
+**Current focus:** v0.3 — playback correctness and recording controls
 
 ## Current Position
 
-Milestone: v0.2 Recordings Library (v0.1 shipped 2026-09-17)
-Phase: 2 (Recordings Library) — In progress
-Plan: 02-02 created + audited, awaiting approval (1 of 2 complete)
-Status: PLAN created and audited, ready for APPLY
-Last activity: 2026-09-18 — Enterprise audit applied to 02-02-PLAN.md (3 must-have, 5 strongly-recommended)
+Milestone: v0.3 Audio (v0.1 and v0.2 shipped)
+Phase: 5 (Playback and controls) — 05-01 and 05-02 applied, awaiting human verification
+Plan: 03-01 closed; 05-01 and 05-02 applied
+Status: APPLY complete for both, at the blocking human-verify checkpoint
+Last activity: 2026-09-18 — seekable recordings (duration + cues) and the recording indicator with
+pause/resume and mute
 
 Progress:
 
-- v0.2 milestone: [█████░░░░░] 50%
-- Phase 2: [█████░░░░░] 50%
+- Features: [███████░░░] 65% (30/46 pts) — inventory grew by 6 pts with the new controls
+- v0.3 Audio: [█████░░░░░] 50% (system audio done; microphone + mixing remain)
 
 ## Loop Position
 
@@ -33,7 +34,7 @@ Current loop state:
 
 ```
 PLAN ──▶ APPLY ──▶ UNIFY
-  ✓        ○        ○     [Plan 02-02 created, awaiting approval]
+  ✓        ✓        ✓     [Plan 03-01 closed — system audio shipped]
 ```
 
 ## Accumulated Context
@@ -47,6 +48,7 @@ PLAN ──▶ APPLY ──▶ UNIFY
 | TypeScript pinned to 5.9.3                | Init  | Bumping it silently kills language-server diagnostics             |
 | MS Store deferred                         | Init  | Only binding rule: never write user data beside the executable     |
 | Library reads folder on demand            | Init  | No index file; removes a whole class of sync bugs                  |
+| 2026-09-18: 03-01 shipped system audio; picker CSS generalised rather than copied | Phase 3 | `.quality__*` became a shared `.picker__*` block used by both controls. A copied second style would have drifted; the audio control also now has a shape that absorbs 03-02's two extra options |
 | 2026-09-18: Enterprise audit on 02-02-PLAN.md. Applied 3 must-have, 5 strongly-recommended. Deferred 5. Verdict: conditionally acceptable | Phase 2 | Caught that `verify-guards.cjs` would have reimplemented the validation it tests — a green test of a copy, ending three plans of unverified guards with a false claim rather than a real one |
 | 2026-09-17: CSP boundary stop resolved. Added `recording:` to `media-src` with user authorisation | Phase 2 | `'self'` does not cover a custom scheme, so the protocol handler alone could not play anything. Measured alternatives: blob: would load whole recordings into memory (~750 MB for 5 min), undoing 01-01's streaming design. `file:` stays forbidden |
 | 2026-09-17: Enterprise audit on 02-01-PLAN.md. Applied 3 must-have, 5 strongly-recommended. Deferred 5. Verdict: conditionally acceptable | Phase 2 | First plan that deletes user files and serves bytes to the renderer. Caught that a failed Recycle Bin move would naturally fall back to permanent deletion, and that the protocol handler's path derivation was unspecified |
@@ -75,7 +77,13 @@ PLAN ──▶ APPLY ──▶ UNIFY
 | ~~AC-5/AC-7 unexercised~~ | **Closed 2026-09-17** via dev-only `__sim` hooks, after three plans | Root cause was diagnostic: both were written against UI this app never shows |
 | AC-6 still unevidenced after four plans | Instrumentation correct and pid-pinned, but no `[memory]` series captured | One 5-minute recording with console output pasted back |
 | Defensive criteria keep shipping unexercised — AC-2, AC-5b, AC-5c, AC-8 refusals | Third plan with this pattern | **Folded into 02-02** as AC-6..AC-9, with an automated `verify:guards` script for the protocol refusals |
-| Window capture measures 1.1 fps | **Blocks Phase 3** (window/region selection) | Measure alternatives before planning that phase |
+| ~~Recordings carry no Duration and no Cues~~ | **Fixed 2026-09-18 in 05-01**: duration 20.673 s recovered, seek 561 ms → 63 ms, cluster bytes identical | Existing recordings deliberately left alone at the user's choice; the player names the condition instead |
+| MP4 cannot replace WebM | Chromium's MP4 muxer emits nothing until stop — 750 MB in memory for 5 min, and a power cut loses everything | Measured 2026-09-18. Re-measure before revisiting |
+| Finalize fallback is unexercised | If `finalizeWebm` throws, the recording should still land by plain rename — correct by construction, never forced | A dev-only `__sim` hook, as was done for AC-5/AC-7 |
+| `frontend-design` was not invocable in a resumed session | A plan marked it **blocking** | Guidance read from the installed plugin on disk instead. If a future plan blocks on a skill, check it resolves before APPLY |
+| Window capture measures 1.1 fps | **Blocks Phase 4** (window/region), which was reordered behind audio | A native Windows Graphics Capture module is the likely unblock — much larger than any phase so far |
+| 02-02 thumbnails parked 2026-09-18 | Adds 0 feature points; browse was already counted in 02-01 | Plan and audit remain valid; tile placeholders already sized, so resuming causes no relayout |
+| Ceremony reduced by request | Audit skipped for plans that do not touch data safety or security | 03-01 adds no delete path and no new CSP source, so the audit's usual targets are absent |
 | Gradient banding root cause is 8-bit 4:2:0 chroma, which MediaRecorder cannot avoid | May persist despite higher bitrate | Needs a different capture path if it matters |
 | ~~Quality picker deferred~~ | **Shipped 01-03**: three presets, persisted, Balanced states its motion cost | Closed |
 | 12 fps measurement may be confounded by the test animation own render rate | Root-cause claim unproven | **AC-1 of 01-02**, now with an explicit ≥2x decision rule |
@@ -83,7 +91,7 @@ PLAN ──▶ APPLY ──▶ UNIFY
 
 ## Boundaries (Active)
 
-Protected for Plan 02-02:
+Protected for Plan 03-01:
 
 - `package.json` — no `"type": "module"`; `typescript` stays pinned at 5.9.3
 - `electron.vite.config.ts` — build targets and output formats
@@ -94,18 +102,24 @@ Protected for Plan 02-02:
 - Codec preference (webm/vp9 first)
 - Quality preset model and `settings.json` handling from 01-03
 - **Renderer CSP: `file:` forbidden.** `recording:` added to `media-src` 2026-09-17 with user authorisation after a boundary stop — one validated handler, not filesystem access
-- **Thumbnails use `data:`** — already allowed by `img-src`; do not extend `recording:` to `img-src`
-- Protocol handler validation rules: 02-02 tests them, never relaxes them
-- Out of scope: audio, window/region selection, rename/trim/search, ffmpeg, new dependencies
+- `recordingPath.cjs` validation and `verify-guards.cjs` — audio changes nothing here
+- Codec preference (webm/vp9) — VP9 carries Opus audio; changing it affects both streams
+- Out of scope: microphone and mixing (03-02), window/region, thumbnails, new dependencies
 
 ## Session Continuity
 
-Last session: 2026-09-17
-Stopped at: Plan 02-02 created
-Next action: Approve, then /paul:apply .paul/phases/02-recordings-library/02-02-PLAN.md
-Resume file: .paul/phases/02-recordings-library/02-02-PLAN.md
+Last session: 2026-09-18
+Stopped at: 05-01 reopened and fixed (range support + keyframe-only cues); meter removed from the HUD at user request; awaiting re-verification
+Next action: User verifies seeking and the indicator; then commit, then microphone (03-02)
+Resume file: .paul/phases/05-playback-and-controls/05-02-SUMMARY.md
 
-**Repository:** committed at c4edabb. Phase 1 tracked; working tree was clean at transition.
+**Repository:** committed at 3546d68. Phases 1 and 2 tracked; working tree clean at commit.
+
+**Uncommitted:** 03-01, 05-01 and 05-02 are all in the working tree. Nothing since 3546d68 is
+committed.
+
+**Parked:** 02-02 thumbnails. Its validator and verifier shipped and are committed; the cache,
+generation and `__sim` hooks remain unbuilt. Plan and audit stay in place.
 
 ---
 

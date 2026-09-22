@@ -17,7 +17,10 @@
     "progress": "node scripts/progress.cjs",
     "verify:guards": "node scripts/verify-guards.cjs",
     "dist": "npm run build && electron-builder --win --publish never",
-    "dist:store": "npm run build && electron-builder --win appx --publish never"
+    "dist:store": "npm run build && electron-builder --win appx --publish never",
+    "verify:finalize": "node scripts/verify-finalize.cjs",
+    "verify:range": "node scripts/verify-range.cjs",
+    "verify": "npm run verify:guards && npm run verify:range && npm run verify:finalize"
   },
   "dependencies": {
     "react": "^19.3.0",

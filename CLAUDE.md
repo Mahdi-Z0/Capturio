@@ -6,9 +6,12 @@ clicks. When a choice arises between "powerful" and "obvious", pick obvious.
 
 ## Status
 
-Scaffold. The build tooling, IPC bridge, and source enumeration work. Recording, audio mixing,
-region select, and the library view are **not implemented yet**. Do not describe unbuilt features
-as working.
+**Working:** full-screen capture to disk, quality presets, system (loopback) audio, the recordings
+library (browse, play, reveal, delete), crash recovery of `.part` files, seekable output, and the
+on-screen recording indicator with pause/resume and mute.
+
+**Not built:** microphone capture and system+mic mixing, window capture, region capture,
+thumbnails. Do not describe these as working.
 
 ## Stack
 
@@ -30,6 +33,11 @@ the language server still starts.
 | Production    | `npm run build`      |
 | Installer     | `npm run dist`       |
 | Store package | `npm run dist:store` |
+| Verify all    | `npm run verify` |
+| Verify guards | `npm run verify:guards` |
+| Verify ranges | `npm run verify:range` |
+| Verify finalize | `npm run verify:finalize` |
+| Progress report | `npm run progress` |
 
 `npm run build` runs `typecheck` first and fails the build on a type error. Keep it that way.
 
@@ -105,6 +113,13 @@ nodes are what later allow independent system/mic level sliders, so wire them in
 **Audio modes** the UI must support: system only, mic only, both, none. "None" means omit the audio
 track entirely, not a muted track.
 
+Shipped so far: `none` and `system`. `AudioMode` in `src/shared/types.ts` deliberately does not
+declare `microphone` or `both` until the mixing code exists — a mode the UI offers but the recorder
+cannot honour is worse than one that is absent.
+
+**Muting mid-recording sets `track.enabled = false`,** which records silence. Never stop the track
+instead: MediaRecorder cannot add one back, so unmuting would be impossible.
+
 **Region capture.** `getDisplayMedia` cannot capture a sub-region. Capture the full display, then
 crop. Start with a canvas pipeline (`drawImage` the video into a cropped canvas,
 `canvas.captureStream()`); move to `MediaStreamTrackProcessor` + `VideoFrame` only if the canvas
@@ -168,6 +183,71 @@ capture limit. Re-run it after any Electron upgrade or capture change.
 
 `resizeMode` is missing from TypeScript's DOM lib; the augmentation lives in
 `src/renderer/src/dom-augment.d.ts`.
+
+## Recordings must be finalized before they are usable
+
+MediaRecorder writes WebM in its **live-streaming profile**: the Segment size is left unknown, no
+`Duration` is written, and no `Cues` index is produced. Measured 2026-09-18 across every file on
+disk — every one was Segment=UNKNOWN, Duration=ABSENT, Cues=ABSENT.
+
+The result plays but `video.duration` is `Infinity`, so a scrubber maps to a fabricated timeline and
+seeking has no index and stalls. **This affects every player, not just this app.**
+
+`src/main/webmFinalize.cjs` rewrites the file once, after the bytes are safely on disk: it declares
+the Segment size, inserts the true `Duration` derived from the last block timestamp, and appends a
+`Cues` index. **Cluster payloads are copied byte for byte — nothing is ever re-encoded.**
+
+**Cue points go only on clusters that contain a video keyframe, timed at that keyframe.** Audio
+blocks are all keyframes, and most clusters open with audio and then continue video mid-GOP. An
+earlier version indexed every cluster: the first seek worked, the second failed with
+`PIPELINE_ERROR_DECODE` and every later seek hung. On a real 20.7 s recording that is 7 cue points
+across 17 clusters.
+
+**Finalizing is not enough on its own — the `recording:` protocol must answer `Range`.**
+`stream: true` on the privileged scheme *permits* range responses; it does not produce them. A
+handler that returns the whole file leaves `seekable.end(0)` at 0 and every seek lands at zero.
+Parsing and serving live in `src/main/byteRange.cjs`. Testing over `file://` hides this, because
+file URLs have range support of their own — always test through `recording://`.
+
+Measured end to end through the shipped modules, one `<video>` element, seeking 15.5 → 3.25 →
+19.9 → 0.5 → 10 s: every seek landed exactly on its target.
+
+`placeRecording()` in `src/main/index.ts` is the only caller, and **its fallback is the point**: if
+finalizing fails for any reason the recording still lands by plain rename. A seek index is a
+convenience; the recording is not. Never reorder that so a finalize failure can lose the file.
+
+Run `npm run verify` after touching any of it — guards, range parsing, and finalizing, each against
+the shipped module directly. `verify:finalize` asserts the cluster bytes are identical before and
+after.
+
+### Why not MP4, which is seekable by construction
+
+Tested 2026-09-18. `video/mp4;codecs=vp9,opus` records and produces a correct `mvhd` duration plus an
+`mfra` index. It was rejected on **delivery timing**, not quality:
+
+| container | chunks over 6 s | arrival times |
+| --- | --- | --- |
+| mp4 | 2 | both at 6006 ms — nothing until stop |
+| webm | 6 | 1077, 2097, 3117, 4169, 5250, 6001 ms |
+
+Chromium's MP4 muxer emits nothing until the recording stops, so the whole file sits in renderer
+memory (~750 MB for 5 minutes at 20 Mbps) and a power cut loses all of it — the exact failure this
+project already suffered. WebM streams; it just needs finishing afterwards. Re-measure before
+revisiting.
+
+## The recording indicator
+
+A frameless always-on-top `BrowserWindow` (`showOverlay()` in `src/main/index.ts`), rendered by
+`Overlay.tsx` from the same bundle via the `#overlay` hash.
+
+**`setContentProtection(true)` is what keeps it out of the recording** — WDA_EXCLUDEFROMCAPTURE on
+Windows 10 2004+. Verified by capturing the screen with a known colour on screen: 3919 matching
+pixels without protection, **0** with it. A recorder that films its own UI is worse than one with no
+indicator, so never remove that call.
+
+The overlay holds no recording state. It renders what the recorder pushes over `hud:state` and sends
+button presses back over `hud:command`, relayed through main. Keep it that way: two sources of truth
+about whether a recording is running is how a stop button ends up lying.
 
 **Known limit.** Gradient banding (most visible in dark gradients) comes from 8-bit 4:2:0 chroma
 subsampling, which `MediaRecorder` does not let us avoid in either codec. Raising bitrate reduces

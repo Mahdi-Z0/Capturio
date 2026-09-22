@@ -1,5 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
+  AudioMode,
+  HudCommand,
+  HudState,
   CaptureSource,
   DisplayInfo,
   QualityPreset,
@@ -23,6 +26,9 @@ const api = {
   setQuality: (preset: QualityPreset): Promise<void> =>
     ipcRenderer.invoke('settings:set-quality', preset),
 
+  getAudioMode: (): Promise<AudioMode> => ipcRenderer.invoke('settings:get-audio'),
+  setAudioMode: (mode: AudioMode): Promise<void> => ipcRenderer.invoke('settings:set-audio', mode),
+
   beginRecording: (ext: string): Promise<string> => ipcRenderer.invoke('recordings:begin', ext),
   appendChunk: (recordingId: string, chunk: ArrayBuffer): Promise<void> =>
     ipcRenderer.invoke('recordings:append', recordingId, chunk),
@@ -40,6 +46,26 @@ const api = {
   revealRecording: (filePath: string): Promise<void> =>
     ipcRenderer.invoke('recordings:reveal', filePath),
   getRecordingsDir: (): Promise<string> => ipcRenderer.invoke('recordings:dir'),
+
+  // The overlay and the recorder never speak directly -- main relays, so neither
+  // window needs a handle on the other and the overlay can come and go freely.
+  publishHudState: (state: HudState): void => {
+    ipcRenderer.send('hud:state', state);
+  },
+  onHudCommand: (handler: (command: HudCommand) => void): (() => void) => {
+    const listener = (_e: unknown, command: HudCommand): void => handler(command);
+    ipcRenderer.on('hud:command', listener);
+    return () => ipcRenderer.removeListener('hud:command', listener);
+  },
+
+  sendHudCommand: (command: HudCommand): void => {
+    ipcRenderer.send('hud:command', command);
+  },
+  onHudState: (handler: (state: HudState) => void): (() => void) => {
+    const listener = (_e: unknown, state: HudState): void => handler(state);
+    ipcRenderer.on('hud:state', listener);
+    return () => ipcRenderer.removeListener('hud:state', listener);
+  },
 };
 
 contextBridge.exposeInMainWorld('api', api);

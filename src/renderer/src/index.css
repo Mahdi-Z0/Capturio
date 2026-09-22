@@ -11,6 +11,9 @@
   --raised: #1b1d27;
   --live: #ff4d4d;
   --edge: #2a2d3a;
+  /* Amber, not red: red is the recording indicator, and a missing audio track
+     is not the same class of event as "you are being recorded". */
+  --warn: #e0b062;
 }
 
 * {
@@ -113,6 +116,18 @@ body {
 }
 
 /* Tabular figures stop the timer jittering as digits change. */
+/*
+ * The audio warning speaks where the readout already speaks. A separate banner
+ * would be a second thing shouting during a recording, and this is information,
+ * not an alarm: the capture is fine, the sound is missing.
+ */
+.readout__warn {
+  display: block;
+  margin-top: 6px;
+  color: var(--warn);
+  font-size: 13px;
+}
+
 .clock {
   color: var(--ink);
   font-size: 30px;
@@ -121,14 +136,19 @@ body {
 }
 
 /*
- * Quality picker.
+ * Pickers: recording quality, and audio source.
+ *
+ * One block, two users. The audio control was specified as "reuse the preset
+ * control's shape rather than inventing a second style", so it shares these rules
+ * outright instead of copying them under a second set of names -- copies drift.
+ * Only the column count differs, set per modifier below.
  *
  * Deliberately quiet: the record trigger is where this screen spends its one bold
  * element, so selection reads as a raised, bordered surface rather than another
  * hit of the red accent. Sentence case throughout -- tracked-out capitals are the
  * commonest tell of a generated interface.
  */
-.quality {
+.picker {
   border: none;
   margin: 0;
   padding: 0;
@@ -137,7 +157,7 @@ body {
   width: 100%;
 }
 
-.quality__legend {
+.picker__legend {
   display: flex;
   align-items: baseline;
   gap: 10px;
@@ -147,24 +167,36 @@ body {
   color: var(--ink-dim);
 }
 
-.quality__lockNote {
+.picker__lockNote {
   color: #6f7488;
   font-size: 12px;
 }
 
-.quality__options {
+.picker__options {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
 }
 
+.picker--quality .picker__options {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+/*
+ * Two columns, not two cells. 03-02 adds "Microphone" and "Both", which wrap into
+ * a second row here with no layout change -- the plan asked for a shape that takes
+ * four options without being redesigned.
+ */
+.picker--audio .picker__options {
+  grid-template-columns: repeat(2, 1fr);
+}
+
 @media (max-width: 560px) {
-  .quality__options {
+  .picker__options {
     grid-template-columns: 1fr;
   }
 }
 
-.quality__option {
+.picker__option {
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -177,37 +209,37 @@ body {
 }
 
 /* The native control stays in the DOM for semantics and keyboard behaviour. */
-.quality__option input {
+.picker__option input {
   position: absolute;
   opacity: 0;
   width: 0;
   height: 0;
 }
 
-.quality__option:hover {
+.picker__option:hover {
   border-color: #3b3f52;
 }
 
-.quality__option.is-selected {
+.picker__option.is-selected {
   border-color: #5a6080;
   background: var(--raised);
 }
 
-.quality__option:focus-within {
+.picker__option:focus-within {
   outline: 2px solid #6f8cff;
   outline-offset: 2px;
 }
 
-.quality:disabled .quality__option {
+.picker:disabled .picker__option {
   cursor: default;
   opacity: 0.45;
 }
 
-.quality:disabled .quality__option:hover {
+.picker:disabled .picker__option:hover {
   border-color: var(--edge);
 }
 
-.quality__name {
+.picker__name {
   display: flex;
   align-items: baseline;
   gap: 7px;
@@ -215,19 +247,19 @@ body {
   color: var(--ink);
 }
 
-.quality__rec {
+.picker__rec {
   font-size: 11px;
   color: #8fa6ff;
 }
 
-.quality__note {
+.picker__note {
   font-size: 12px;
   line-height: 1.35;
   color: var(--ink-dim);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .quality__option {
+  .picker__option {
     transition: none;
   }
 }
@@ -480,4 +512,56 @@ body {
   .library__more {
     transition: none;
   }
+}
+
+/* Stated once, under the player it applies to -- not a banner over the library. */
+.player__note {
+  margin: 0;
+  padding: 8px 14px 10px;
+  color: var(--warn);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* In-window recording controls. Quiet: the trigger is still the bold element. */
+.liveControls {
+  display: flex;
+  gap: 8px;
+}
+
+.liveBtn {
+  padding: 7px 14px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.liveBtn:hover:not(:disabled) {
+  border-color: #3b3f52;
+  background: var(--raised);
+}
+
+.liveBtn:focus-visible {
+  outline: 2px solid #6f8cff;
+  outline-offset: 2px;
+}
+
+.liveBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.clock.is-paused {
+  color: var(--warn);
+}
+
+.clock__note {
+  margin-left: 10px;
+  font-size: 13px;
+  color: var(--warn);
+  letter-spacing: 0;
 }

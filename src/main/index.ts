@@ -3,7 +3,6 @@ import {
   BrowserWindow,
   desktopCapturer,
   ipcMain,
-  net,
   protocol,
   screen,
   session,
@@ -13,9 +12,12 @@ import { createWriteStream, mkdirSync, type WriteStream } from 'node:fs';
 import { stat, rename, unlink, readdir, access, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve, sep, extname } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { pathToFileURL } from 'node:url';
 import { resolveRecordingRequest } from './recordingPath.cjs';
+import { createRangeResponse } from './byteRange.cjs';
+import { finalizeWebm } from './webmFinalize.cjs';
 import type {
+  AudioMode,
+  HudState,
   CaptureSource,
   DisplayInfo,
   QualityPreset,
@@ -23,16 +25,22 @@ import type {
   RecordingListItem,
 } from '../shared/types.js';
 import {
+  DEFAULT_AUDIO_MODE,
   DEFAULT_QUALITY,
+  isAudioMode,
   isQualityPreset,
   PLAYABLE_EXTENSIONS,
-  RECORDING_SCHEME,
+  RECORDING_SCHEME, isHudCommand,
 } from '../shared/types.js';
 
 /**
  * Privileged scheme registration MUST happen before app ready.
- * `stream: true` enables range requests, without which seeking in a long
- * recording does not work; `supportFetchAPI` lets the handler use net.fetch.
+ *
+ * `stream: true` *permits* range responses; it does not produce them. The handler
+ * has to answer `Range` itself, and until it did (2026-09-18) `seekable.end(0)`
+ * was 0 and every seek landed back at zero. See `serveRange`.
+ *
+ * `supportFetchAPI` lets the renderer fetch this scheme at all.
  */
 protocol.registerSchemesAsPrivileged([
   {
@@ -140,6 +148,45 @@ async function discard(rec: ActiveRecording): Promise<void> {
 }
 
 /**
+ * Move a finished .part into place, making it seekable on the way.
+ *
+ * MediaRecorder leaves WebM in its live-streaming profile: no Duration, no Cues,
+ * Segment size unknown. The result plays but reports `Infinity` for its duration
+ * and cannot be scrubbed -- in this app or any other player. `finalizeWebm`
+ * rewrites the header and appends a cue index, copying every cluster byte
+ * unchanged.
+ *
+ * The fallback is the point. If finalizing fails for any reason, the recording
+ * still lands under its final name by plain rename -- exactly today's behaviour.
+ * A seek index is a convenience; the recording is not. Never trade the second for
+ * the first.
+ */
+async function placeRecording(partPath: string, finalPath: string): Promise<void> {
+  if (extname(finalPath).toLowerCase() === '.webm') {
+    try {
+      const result = await finalizeWebm(partPath, finalPath);
+      await unlink(partPath).catch(() => undefined);
+      console.log(
+        `[finalize] ${result.durationMs} ms, ${result.cuePoints} cue points, ` +
+          `${result.bytesCopied} bytes copied unchanged`,
+      );
+      return;
+    } catch (err) {
+      console.error('[finalize] failed; saving the recording unindexed instead:', err);
+      // Clear a partial output so the rename below can land -- but only one this
+      // call created. On EEXIST nothing was written and the file at that name is
+      // somebody else's; deleting it here would turn a naming collision into
+      // data loss. The rename then carries the pre-existing overwrite semantics,
+      // which is what this path did before finalizing existed.
+      if ((err as NodeJS.ErrnoException)?.code !== 'EEXIST') {
+        await unlink(finalPath).catch(() => undefined);
+      }
+    }
+  }
+  await rename(partPath, finalPath);
+}
+
+/**
  * Reclaim .part files left by a crash, power loss, or force-quit.
  *
  * The atomic write path deliberately leaves a .part behind rather than a final-named
@@ -179,7 +226,9 @@ async function recoverOrphanedParts(): Promise<number> {
             break;
           }
         }
-        await rename(partPath, target);
+        // Recovered recordings get the same treatment: a file rescued from a
+        // power loss is the one you can least afford to leave unscrubbable.
+        await placeRecording(partPath, target);
         recovered += 1;
         console.log(`[recover] reclaimed ${name} -> ${target}`);
       } catch (err) {
@@ -197,11 +246,15 @@ async function recoverOrphanedParts(): Promise<number> {
 // userData, not the recordings folder. That folder holds the user's media; config
 // does not belong in it.
 
-const SETTINGS_VERSION = 1;
+// v2 adds `audio`. A v1 file -- which is what is on disk today -- must keep its
+// quality preset and gain an audio default, then be rewritten. Bumping without
+// handling that would either throw on read or silently reset the user's choice.
+const SETTINGS_VERSION = 2;
 
 interface SettingsFile {
   version: number;
   quality: QualityPreset;
+  audio: AudioMode;
 }
 
 const settingsPath = (): string => join(app.getPath('userData'), 'settings.json');
@@ -236,25 +289,52 @@ async function writeSettings(data: SettingsFile): Promise<void> {
  * rewritten on detection rather than "on the next write" — if the user never
  * changes the preset, that write never comes and the file stays broken forever.
  */
-async function readQuality(): Promise<QualityPreset> {
+async function readSettings(): Promise<SettingsFile> {
+  const fallback: SettingsFile = {
+    version: SETTINGS_VERSION,
+    quality: DEFAULT_QUALITY,
+    audio: DEFAULT_AUDIO_MODE,
+  };
+
   let raw: string;
   try {
     raw = await readFile(settingsPath(), 'utf8');
   } catch {
-    void writeSettings({ version: SETTINGS_VERSION, quality: DEFAULT_QUALITY }).catch(() => undefined);
-    return DEFAULT_QUALITY;
+    void writeSettings(fallback).catch(() => undefined);
+    return fallback;
   }
 
+  let parsed: unknown;
   try {
-    const parsed: unknown = JSON.parse(raw);
-    const quality = (parsed as { quality?: unknown } | null)?.quality;
-    if (isQualityPreset(quality)) return quality;
-    console.error(`[settings] unknown quality ${String(quality)}; resetting to ${DEFAULT_QUALITY}`);
+    parsed = JSON.parse(raw);
   } catch {
     console.error('[settings] unparseable settings.json; resetting to defaults');
+    void writeSettings(fallback).catch(() => undefined);
+    return fallback;
   }
-  void writeSettings({ version: SETTINGS_VERSION, quality: DEFAULT_QUALITY }).catch(() => undefined);
-  return DEFAULT_QUALITY;
+
+  const obj = (parsed ?? {}) as { version?: unknown; quality?: unknown; audio?: unknown };
+
+  // Each field is validated independently, so one bad value never discards the
+  // other. A v1 file has no `audio` at all -- that is a migration, not corruption.
+  const quality = isQualityPreset(obj.quality) ? obj.quality : DEFAULT_QUALITY;
+  const audio = isAudioMode(obj.audio) ? obj.audio : DEFAULT_AUDIO_MODE;
+
+  if (!isQualityPreset(obj.quality)) {
+    console.error(`[settings] unknown quality ${String(obj.quality)}; using ${DEFAULT_QUALITY}`);
+  }
+  const migrating = obj.version !== SETTINGS_VERSION;
+  if (migrating) {
+    console.log(`[settings] migrating v${String(obj.version)} -> v${SETTINGS_VERSION}`);
+  }
+
+  const settings: SettingsFile = { version: SETTINGS_VERSION, quality, audio };
+  // Rewrite on migration or on any rejected field, so a stale or broken file
+  // heals once rather than being re-read and re-patched on every launch.
+  if (migrating || !isQualityPreset(obj.quality) || !isAudioMode(obj.audio)) {
+    void writeSettings(settings).catch(() => undefined);
+  }
+  return settings;
 }
 
 // --- Memory sampling (AC-6) ----------------------------------------------------
@@ -389,14 +469,42 @@ function registerRecordingProtocol(): void {
       return new Response('Not found', { status: 404 });
     }
 
+    let size: number;
     try {
-      await access(decision.filePath);
+      size = (await stat(decision.filePath)).size;
     } catch {
       console.error(`[${RECORDING_SCHEME}] no such recording: ${decision.fileName}`);
       return new Response('Not found', { status: 404 });
     }
-    return net.fetch(pathToFileURL(decision.filePath).toString());
+
+    return serveRange(request, decision.filePath, size);
   });
+}
+
+/** Content type from the extension. The list is the one the validator allows. */
+function mediaTypeFor(filePath: string): string {
+  return extname(filePath).toLowerCase() === '.mp4' ? 'video/mp4' : 'video/webm';
+}
+
+/**
+ * Serve a recording with HTTP range support.
+ *
+ * This is what makes the scrubber work. A <video> element seeks by asking for a
+ * byte range; a handler that always returns the whole file gives it nothing to
+ * seek with. Measured 2026-09-18 on a finalized 12.6 MB recording:
+ *
+ *   net.fetch passthrough : seekable.end(0) = 0, a seek to 15.5 s landed at 0
+ *   range-aware           : seekable.end(0) = 20.673, the seek landed at 15.5
+ *
+ * The duration fix in webmFinalize.cjs was necessary but not sufficient -- both
+ * are required, and testing over file:// hid this because file URLs carry range
+ * support of their own.
+ */
+function serveRange(request: Request, filePath: string, size: number): Response {
+  // Parsing and serving both live in byteRange.cjs, which scripts/verify-range.cjs
+  // requires directly -- one implementation, so the verifier cannot drift from
+  // what ships.
+  return createRangeResponse(request.headers.get('Range'), filePath, size, mediaTypeFor(filePath));
 }
 
 // --- Capture source selection --------------------------------------------------
@@ -426,7 +534,7 @@ function pickPrimaryScreen(
 }
 
 function registerDisplayMediaHandler(): void {
-  session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
+  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
     desktopCapturer
       .getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } })
       .then((sources) => {
@@ -437,8 +545,10 @@ function registerDisplayMediaHandler(): void {
           callback({});
           return;
         }
-        // Audio stays out of this phase entirely.
-        callback({ video: source, audio: undefined });
+        // 'loopback' is real WASAPI system audio on Windows. Only when the
+        // renderer actually asked: requesting it unconditionally would attach a
+        // track to recordings the user chose to keep silent.
+        callback({ video: source, audio: request.audioRequested ? 'loopback' : undefined });
       })
       .catch((err: unknown) => {
         console.error('[displayMedia] getSources failed:', err);
@@ -475,16 +585,36 @@ function registerIpc(): void {
     };
   });
 
-  ipcMain.handle('settings:get-quality', (): Promise<QualityPreset> => readQuality());
+  ipcMain.handle(
+    'settings:get-quality',
+    async (): Promise<QualityPreset> => (await readSettings()).quality,
+  );
 
   ipcMain.handle('settings:set-quality', async (_e, preset: unknown): Promise<void> => {
     if (!isQualityPreset(preset)) {
       fail('settings:set-quality', new Error(`Unknown quality preset: ${String(preset)}`));
     }
     try {
-      await writeSettings({ version: SETTINGS_VERSION, quality: preset });
+      // Merged, not replaced: writing only the quality would silently drop the
+      // audio mode stored alongside it.
+      const current = await readSettings();
+      await writeSettings({ ...current, version: SETTINGS_VERSION, quality: preset });
     } catch (err) {
       fail('settings:set-quality', err);
+    }
+  });
+
+  ipcMain.handle('settings:get-audio', async (): Promise<AudioMode> => (await readSettings()).audio);
+
+  ipcMain.handle('settings:set-audio', async (_e, mode: unknown): Promise<void> => {
+    if (!isAudioMode(mode)) {
+      fail('settings:set-audio', new Error(`Unknown audio mode: ${String(mode)}`));
+    }
+    try {
+      const current = await readSettings();
+      await writeSettings({ ...current, version: SETTINGS_VERSION, audio: mode });
+    } catch (err) {
+      fail('settings:set-audio', err);
     }
   });
 
@@ -540,9 +670,9 @@ function registerIpc(): void {
       await new Promise<void>((res, rej) => {
         rec.stream.end((err?: Error | null) => (err ? rej(err) : res()));
       });
-      // The rename is what makes this atomic. Until it lands, a crash leaves a
-      // .part file rather than a truncated file wearing a valid name.
-      await rename(rec.partPath, rec.finalPath);
+      // Placing the file is what makes this atomic. Until it lands, a crash
+      // leaves a .part file rather than a truncated file wearing a valid name.
+      await placeRecording(rec.partPath, rec.finalPath);
       reportMemory();
       stopMemorySampling();
       const info = await stat(rec.finalPath);
@@ -658,7 +788,111 @@ function registerIpc(): void {
   });
 }
 
-// --- Window --------------------------------------------------------------------
+/* ------------------------------------------------------------------ overlay */
+
+let overlayWindow: BrowserWindow | null = null;
+let mainWindow: BrowserWindow | null = null;
+
+const OVERLAY_WIDTH = 232;
+const OVERLAY_HEIGHT = 56;
+
+/**
+ * The on-screen recording indicator.
+ *
+ * Frameless, always on top, and -- the part that matters -- excluded from screen
+ * capture via `setContentProtection(true)`, which maps to WDA_EXCLUDEFROMCAPTURE
+ * on Windows 10 2004+. Without it the indicator would appear in every recording
+ * it is meant to describe, and a recorder that films its own UI is worse than one
+ * with no indicator at all.
+ *
+ * Created on demand and destroyed when recording ends: an always-present window
+ * would sit in front of the user's work for no reason.
+ */
+function showOverlay(): void {
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    overlayWindow.showInactive();
+    return;
+  }
+
+  const { workArea } = screen.getPrimaryDisplay();
+  overlayWindow = new BrowserWindow({
+    width: OVERLAY_WIDTH,
+    height: OVERLAY_HEIGHT,
+    // Bottom centre: out of the way of window chrome and the tray, and the one
+    // region people rarely put the thing they are recording.
+    x: Math.round(workArea.x + (workArea.width - OVERLAY_WIDTH) / 2),
+    y: Math.round(workArea.y + workArea.height - OVERLAY_HEIGHT - 48),
+    frame: false,
+    transparent: true,
+    resizable: false,
+    movable: true,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    show: false,
+    hasShadow: false,
+    backgroundColor: '#00000000',
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  });
+
+  // Above full-screen apps too, or it vanishes exactly when someone is recording
+  // a game or a presentation.
+  overlayWindow.setAlwaysOnTop(true, 'screen-saver');
+  overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  overlayWindow.setContentProtection(true);
+
+  overlayWindow.on('closed', () => {
+    overlayWindow = null;
+  });
+
+  const url = process.env['ELECTRON_RENDERER_URL'];
+  if (url) {
+    void overlayWindow.loadURL(`${url}#overlay`);
+  } else {
+    void overlayWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: 'overlay' });
+  }
+
+  // showInactive: taking focus mid-recording would pull the user out of whatever
+  // they are recording.
+  overlayWindow.once('ready-to-show', () => overlayWindow?.showInactive());
+}
+
+function hideOverlay(): void {
+  if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.close();
+  overlayWindow = null;
+}
+
+function registerHudRelay(): void {
+  // Recorder -> overlay. Also owns the overlay's lifetime: the recorder is the
+  // only thing that knows whether a recording exists.
+  ipcMain.on('hud:state', (_e, state: HudState) => {
+    if (state?.recording) showOverlay();
+    else hideOverlay();
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.webContents.send('hud:state', state);
+    }
+  });
+
+  // Overlay -> recorder. Validated here rather than trusted: this crosses a
+  // window boundary, and the recorder acts on whatever arrives.
+  ipcMain.on('hud:command', (_e, command: unknown) => {
+    if (!isHudCommand(command)) {
+      console.error('[hud] ignoring unknown command:', command);
+      return;
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('hud:command', command);
+    }
+  });
+}
+
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -677,7 +911,14 @@ function createWindow(): void {
     },
   });
 
+  mainWindow = win;
   win.on('ready-to-show', () => win.show());
+  // The indicator describes a recording owned by this window. If the window goes,
+  // nothing is recording, and a stranded always-on-top pill would be unkillable.
+  win.on('closed', () => {
+    mainWindow = null;
+    hideOverlay();
+  });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url);
@@ -695,6 +936,7 @@ app.whenReady().then(() => {
   registerDisplayMediaHandler();
   registerRecordingProtocol();
   registerIpc();
+  registerHudRelay();
   // Reclaim anything a previous crash left behind, before a new recording starts.
   void recoverOrphanedParts();
   createWindow();
@@ -722,7 +964,7 @@ app.on('before-quit', (event) => {
         await new Promise<void>((res, rej) => {
           rec.stream.end((err?: Error | null) => (err ? rej(err) : res()));
         });
-        await rename(rec.partPath, rec.finalPath);
+        await placeRecording(rec.partPath, rec.finalPath);
       } catch (err) {
         console.error('[before-quit] failed to finalize recording:', err);
       }

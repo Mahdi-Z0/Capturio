@@ -28,6 +28,7 @@ export default tseslint.config(
       sourceType: 'commonjs',
       globals: {
         require: 'readonly',
+        Buffer: 'readonly',
         module: 'writable',
         process: 'readonly',
         console: 'readonly',

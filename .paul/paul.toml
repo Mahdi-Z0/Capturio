@@ -15,10 +15,10 @@ status = "in_progress"
 phases = 1
 
 [phase]
-number = 2
-name = "Recordings Library"
-status = "in_progress"
-plans_completed = 1
+number = 3
+name = "Audio"
+status = "planning"
+plans_completed = 0
 
 [loop]
 position = "PLAN"
@@ -30,5 +30,5 @@ groom = true
 
 [stats]
 total_plans = 4
-total_phases = 1
-last_activity = "2026-09-17T11:00:00Z"
+total_phases = 2
+last_activity = "2026-09-18T09:00:00Z"

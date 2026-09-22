@@ -120,6 +120,9 @@ export default function Library({ refreshKey }: LibraryProps): React.JSX.Element
   const [confirmingPermanent, setConfirmingPermanent] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const { durations, observe } = useDurations(items ?? []);
+  // Derived from the element itself, not from the file name: the only reliable
+  // signal is what the decoder reports once metadata is in.
+  const [unindexed, setUnindexed] = useState(false);
 
   const refresh = useCallback(async (): Promise<RecordingListItem[]> => {
     try {
@@ -217,10 +220,20 @@ export default function Library({ refreshKey }: LibraryProps): React.JSX.Element
                 src={current.playbackUrl}
                 controls
                 autoPlay
+                onLoadedMetadata={(e) => setUnindexed(!Number.isFinite(e.currentTarget.duration))}
                 onError={() =>
                   setError(`${current.fileName} could not be played. It may have been moved.`)
                 }
               />
+              {/* Recordings made before the finalize step carry no duration and no
+                  seek index, so the browser reports Infinity and the scrubber is
+                  meaningless. Say so, rather than let it look like a live bug. */}
+              {unindexed && (
+                <p className="player__note">
+                  This recording was saved before seeking was fixed, so its length is unknown and
+                  the scrubber will not work. New recordings seek normally.
+                </p>
+              )}
               <div className="player__bar">
                 <span className="player__name">{current.fileName}</span>
                 <div className="player__actions">

@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { QualityPreset, Recording } from '../../shared/types.js';
-import { DEFAULT_QUALITY, QUALITY_PRESETS } from '../../shared/types.js';
+import type { AudioMode, QualityPreset, Recording } from '../../shared/types.js';
+import {
+  AUDIO_UNAVAILABLE_NOTE,
+  IDLE_HUD_STATE,
+  DEFAULT_AUDIO_MODE,
+  DEFAULT_QUALITY,
+  QUALITY_PRESETS,
+} from '../../shared/types.js';
 
 export type RecorderStatus = 'idle' | 'starting' | 'recording' | 'saving';
 
@@ -47,6 +53,50 @@ function videoConstraints(frameRate: number): MediaTrackConstraints {
 }
 
 /**
+ * Acquire capture, degrading to video-only rather than failing.
+ *
+ * If audio was requested and the whole call throws, retry once without it. A
+ * driver that refuses audio capture should cost the narration, not the entire
+ * recording -- losing a capture you cannot repeat is far worse than losing its
+ * sound. Only a video failure is fatal.
+ *
+ * Returns what was actually obtained, so callers can report the truth.
+ */
+async function acquireWithAudio(
+  frameRate: number,
+  wantAudio: boolean,
+): Promise<{ stream: MediaStream; audioRequested: boolean; audioObtained: boolean }> {
+  if (import.meta.env.DEV && simFailNextCapture) {
+    simFailNextCapture = false;
+    console.warn('[__sim] simulating capture failure (this is a test hook, not a real fault)');
+    throw new DOMException('Simulated capture failure', 'NotAllowedError');
+  }
+
+  const video = videoConstraints(frameRate);
+
+  if (!wantAudio) {
+    const stream = await navigator.mediaDevices.getDisplayMedia({ video, audio: false });
+    return { stream, audioRequested: false, audioObtained: false };
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getDisplayMedia({ video, audio: true });
+    // The quiet failure: the request is accepted, no audio track arrives, and the
+    // app reports success. The user finds out on playback, when the moment has
+    // gone. Check what came back rather than what was asked for.
+    return {
+      stream,
+      audioRequested: true,
+      audioObtained: stream.getAudioTracks().length > 0,
+    };
+  } catch (err) {
+    console.error('[capture] audio request failed, retrying without audio:', err);
+    const stream = await navigator.mediaDevices.getDisplayMedia({ video, audio: false });
+    return { stream, audioRequested: true, audioObtained: false };
+  }
+}
+
+/**
  * Dev-only failure simulation.
  *
  * AC-5 and AC-7 were carried unexercised through two plans because neither
@@ -56,30 +106,6 @@ function videoConstraints(frameRate: number): MediaTrackConstraints {
  * production builds by the `import.meta.env.DEV` guard.
  */
 let simFailNextCapture = false;
-
-/**
- * Acquire the screen capture stream.
- *
- * Standard `getDisplayMedia`. A legacy `getUserMedia` path was tried and reverted:
- * measured 2026-09-17 with `npm run bench:capture`, at a 60 fps target the two are
- * indistinguishable (54.4 vs 54.6 fps, jitter 5.38 vs 5.14 ms), and at a 30 fps
- * target legacy had twice the jitter and four times the hitch rate. It won on
- * average frame rate while losing on the thing that actually looks like smooth
- * motion, so the non-standard API bought nothing.
- */
-async function acquireCapture(frameRate: number): Promise<MediaStream> {
-  if (import.meta.env.DEV && simFailNextCapture) {
-    // One-shot: cleared here, before the throw, so a latched flag can never make
-    // every subsequent recording fail with no visible cause.
-    simFailNextCapture = false;
-    console.warn('[__sim] simulating capture failure (this is a test hook, not a real fault)');
-    throw new DOMException('Simulated capture failure', 'NotAllowedError');
-  }
-  return navigator.mediaDevices.getDisplayMedia({
-    video: videoConstraints(frameRate),
-    audio: false,
-  });
-}
 
 function message(err: unknown): string {
   if (err instanceof DOMException && (err.name === 'NotAllowedError' || err.name === 'AbortError')) {
@@ -95,6 +121,9 @@ export interface CaptureInfo {
   frameRate: number;
   resizeMode: string;
   codec: string;
+  /** What the user asked for, and what the stream actually carried. */
+  audioRequested: boolean;
+  audioObtained: boolean;
 }
 
 export interface RecorderState {
@@ -105,8 +134,13 @@ export interface RecorderState {
   captureInfo: CaptureInfo | null;
   /** The preset the in-flight recording is actually using, not the stored setting. */
   activePreset: QualityPreset | null;
+  paused: boolean;
+  muted: boolean;
   start: () => Promise<void>;
   stop: () => void;
+  pause: () => void;
+  resume: () => void;
+  toggleMute: () => void;
 }
 
 export function useRecorder(): RecorderState {
@@ -117,10 +151,17 @@ export function useRecorder(): RecorderState {
   const [captureInfo, setCaptureInfo] = useState<CaptureInfo | null>(null);
   const [activePreset, setActivePreset] = useState<QualityPreset | null>(null);
 
+  const [paused, setPaused] = useState(false);
+  const [muted, setMuted] = useState(false);
+
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const idRef = useRef<string | null>(null);
   const startedAtRef = useRef(0);
+  // Paused time is excluded from the clock: a 10-minute timer on a 6-minute file
+  // is a lie, and the timer is what people trust to know how long they have run.
+  const pausedAtRef = useRef(0);
+  const pausedTotalRef = useRef(0);
   // Chunks are appended one at a time, in order. Without this the writes race.
   const queueRef = useRef<Promise<void>>(Promise.resolve());
 
@@ -128,13 +169,47 @@ export function useRecorder(): RecorderState {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     recorderRef.current = null;
+    setPaused(false);
+    setMuted(false);
+    pausedAtRef.current = 0;
+    pausedTotalRef.current = 0;
+    window.api.publishHudState(IDLE_HUD_STATE);
+  }, []);
+
+  const elapsedNow = useCallback((): number => {
+    if (!startedAtRef.current) return 0;
+    const frozenAt = pausedAtRef.current || Date.now();
+    return frozenAt - startedAtRef.current - pausedTotalRef.current;
   }, []);
 
   useEffect(() => {
     if (status !== 'recording') return;
-    const t = setInterval(() => setElapsedMs(Date.now() - startedAtRef.current), 200);
+    const t = setInterval(() => setElapsedMs(elapsedNow()), 200);
     return () => clearInterval(t);
-  }, [status]);
+  }, [status, elapsedNow]);
+
+  /*
+   * Push state to the overlay indicator.
+   *
+   * Its own interval rather than a React render: only the clock changes, so
+   * re-rendering the whole app to advance it would be wasteful.
+   */
+  useEffect(() => {
+    if (status !== 'recording') return;
+    const publish = (): void => {
+      const track = streamRef.current?.getAudioTracks()[0];
+      window.api.publishHudState({
+        recording: true,
+        paused: Boolean(pausedAtRef.current),
+        elapsedMs: elapsedNow(),
+        hasAudio: Boolean(track),
+        muted: track ? !track.enabled : false,
+      });
+    };
+    publish();
+    const t = setInterval(publish, 250);
+    return () => clearInterval(t);
+  }, [status, elapsedNow]);
 
   // Release the capture if the window closes mid-recording.
   useEffect(() => releaseStream, [releaseStream]);
@@ -175,14 +250,25 @@ export function useRecorder(): RecorderState {
     // without a restart. Held for the whole recording (AC-3).
     const presetKey = await window.api.getQuality().catch(() => DEFAULT_QUALITY);
     const preset = QUALITY_PRESETS[presetKey];
+    const audioMode: AudioMode = await window.api.getAudioMode().catch(() => DEFAULT_AUDIO_MODE);
 
     let stream: MediaStream;
+    let audioRequested = false;
+    let audioObtained = false;
     try {
-      stream = await acquireCapture(preset.frameRate);
+      const got = await acquireWithAudio(preset.frameRate, audioMode === 'system');
+      stream = got.stream;
+      audioRequested = got.audioRequested;
+      audioObtained = got.audioObtained;
     } catch (err) {
       setStatus('idle');
       setError(message(err));
       return;
+    }
+
+    // Requested but absent: keep the recording, say so plainly (AC-5, AC-6).
+    if (audioRequested && !audioObtained) {
+      setError(AUDIO_UNAVAILABLE_NOTE);
     }
 
     const { mimeType, ext } = pickContainer();
@@ -197,6 +283,7 @@ export function useRecorder(): RecorderState {
     }
 
     streamRef.current = stream;
+
     idRef.current = recordingId;
     queueRef.current = Promise.resolve();
 
@@ -264,6 +351,8 @@ export function useRecorder(): RecorderState {
         frameRate: Math.round(s.frameRate ?? 0),
         resizeMode: s.resizeMode ?? 'unknown',
         codec: mimeType || 'default',
+        audioRequested,
+        audioObtained,
       });
     }
 
@@ -278,5 +367,62 @@ export function useRecorder(): RecorderState {
     if (recorder && recorder.state !== 'inactive') recorder.stop();
   }, []);
 
-  return { status, elapsedMs, lastSaved, error, captureInfo, activePreset, start, stop };
+  const pause = useCallback(() => {
+    const recorder = recorderRef.current;
+    if (!recorder || recorder.state !== 'recording') return;
+    recorder.pause();
+    pausedAtRef.current = Date.now();
+    setPaused(true);
+  }, []);
+
+  const resume = useCallback(() => {
+    const recorder = recorderRef.current;
+    if (!recorder || recorder.state !== 'paused') return;
+    // Credit the paused span before clearing it, or the clock jumps forward by
+    // however long the pause lasted.
+    pausedTotalRef.current += Date.now() - pausedAtRef.current;
+    pausedAtRef.current = 0;
+    recorder.resume();
+    setPaused(false);
+  }, []);
+
+  /**
+   * Silence the audio without removing the track.
+   *
+   * `track.enabled = false` records silence for the muted stretch. Stopping the
+   * track instead would end it permanently -- MediaRecorder cannot add one back
+   * mid-recording, so unmuting would be impossible.
+   */
+  const toggleMute = useCallback(() => {
+    const track = streamRef.current?.getAudioTracks()[0];
+    if (!track) return;
+    track.enabled = !track.enabled;
+    setMuted(!track.enabled);
+  }, []);
+
+  // Commands from the overlay indicator.
+  useEffect(() => {
+    return window.api.onHudCommand((command) => {
+      if (command === 'stop') stop();
+      else if (command === 'pause') pause();
+      else if (command === 'resume') resume();
+      else if (command === 'toggle-mute') toggleMute();
+    });
+  }, [stop, pause, resume, toggleMute]);
+
+  return {
+    status,
+    elapsedMs,
+    lastSaved,
+    error,
+    captureInfo,
+    activePreset,
+    paused,
+    muted,
+    start,
+    stop,
+    pause,
+    resume,
+    toggleMute,
+  };
 }

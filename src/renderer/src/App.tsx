@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRecorder } from './useRecorder.js';
 import Library from './Library.js';
-import { DEFAULT_QUALITY, QUALITY_PRESETS, type QualityPreset } from '../../shared/types.js';
+import {
+  AUDIO_MODES,
+  AUDIO_UNAVAILABLE_NOTE,
+  DEFAULT_AUDIO_MODE,
+  DEFAULT_QUALITY,
+  QUALITY_PRESETS,
+  type AudioMode,
+  type QualityPreset,
+} from '../../shared/types.js';
 
 function formatElapsed(ms: number): string {
   const total = Math.floor(ms / 1000);
@@ -13,12 +21,27 @@ function formatElapsed(ms: number): string {
 }
 
 const PRESET_ORDER: QualityPreset[] = ['balanced', 'high', 'maximum'];
+const AUDIO_ORDER: AudioMode[] = ['none', 'system'];
 
 export default function App(): React.JSX.Element {
-  const { status, elapsedMs, lastSaved, error, captureInfo, activePreset, start, stop } =
-    useRecorder();
+  const {
+    status,
+    elapsedMs,
+    lastSaved,
+    error,
+    captureInfo,
+    activePreset,
+    paused,
+    muted,
+    start,
+    stop,
+    pause,
+    resume,
+    toggleMute,
+  } = useRecorder();
   const [dir, setDir] = useState('');
   const [quality, setQuality] = useState<QualityPreset>(DEFAULT_QUALITY);
+  const [audio, setAudio] = useState<AudioMode>(DEFAULT_AUDIO_MODE);
 
   useEffect(() => {
     window.api
@@ -28,6 +51,10 @@ export default function App(): React.JSX.Element {
     window.api
       .getQuality()
       .then(setQuality)
+      .catch(() => undefined);
+    window.api
+      .getAudioMode()
+      .then(setAudio)
       .catch(() => undefined);
   }, []);
 
@@ -41,6 +68,16 @@ export default function App(): React.JSX.Element {
     setQuality(next);
     void window.api.setQuality(next).catch(() => undefined);
   }, []);
+
+  const chooseAudio = useCallback((next: AudioMode) => {
+    setAudio(next);
+    void window.api.setAudioMode(next).catch(() => undefined);
+  }, []);
+
+  // Asked for sound, got none. Worth saying while it is still happening -- at idle
+  // the readout carries the same sentence as the error, so this covers the gap
+  // where the clock is showing and the error line is not.
+  const audioMissing = Boolean(captureInfo?.audioRequested && !captureInfo.audioObtained);
 
   return (
     <main className="shell">
@@ -58,21 +95,47 @@ export default function App(): React.JSX.Element {
         <p className="readout" role="status">
           {status === 'starting' && 'Waiting for the screen…'}
           {status === 'saving' && 'Writing the file…'}
-          {recording && <span className="clock">{formatElapsed(elapsedMs)}</span>}
+          {recording && (
+            <span className={`clock ${paused ? 'is-paused' : ''}`}>
+              {formatElapsed(elapsedMs)}
+              {paused && <span className="clock__note">paused</span>}
+            </span>
+          )}
           {status === 'idle' && (error ? error : 'Ready to record your main screen.')}
+          {locked && audioMissing && <span className="readout__warn">{AUDIO_UNAVAILABLE_NOTE}</span>}
         </p>
+        {/* Mirrors the overlay indicator. The overlay is reachable while other
+            windows are in front; this is reachable when the app itself is. */}
+        {recording && (
+          <div className="liveControls">
+            <button type="button" className="liveBtn" onClick={() => (paused ? resume() : pause())}>
+              {paused ? 'Resume' : 'Pause'}
+            </button>
+            <button
+              type="button"
+              className="liveBtn"
+              onClick={toggleMute}
+              disabled={!captureInfo?.audioObtained}
+              title={
+                captureInfo?.audioObtained ? undefined : 'This recording has no audio track to mute'
+              }
+            >
+              {muted ? 'Unmute audio' : 'Mute audio'}
+            </button>
+          </div>
+        )}
       </div>
 
-      <fieldset className="quality" disabled={locked}>
-        <legend className="quality__legend">
+      <fieldset className="picker picker--quality" disabled={locked}>
+        <legend className="picker__legend">
           Recording quality
-          {locked && <span className="quality__lockNote">locked while recording</span>}
+          {locked && <span className="picker__lockNote">locked while recording</span>}
         </legend>
-        <div className="quality__options">
+        <div className="picker__options">
           {PRESET_ORDER.map((key) => {
             const p = QUALITY_PRESETS[key];
             return (
-              <label key={key} className={`quality__option ${quality === key ? 'is-selected' : ''}`}>
+              <label key={key} className={`picker__option ${quality === key ? 'is-selected' : ''}`}>
                 <input
                   type="radio"
                   name="quality"
@@ -80,11 +143,36 @@ export default function App(): React.JSX.Element {
                   checked={quality === key}
                   onChange={() => choose(key)}
                 />
-                <span className="quality__name">
+                <span className="picker__name">
                   {p.label}
-                  {p.recommended && <span className="quality__rec">recommended</span>}
+                  {p.recommended && <span className="picker__rec">recommended</span>}
                 </span>
-                <span className="quality__note">{p.blurb}</span>
+                <span className="picker__note">{p.blurb}</span>
+              </label>
+            );
+          })}
+        </div>
+      </fieldset>
+
+      <fieldset className="picker picker--audio" disabled={locked}>
+        <legend className="picker__legend">
+          Sound
+          {locked && <span className="picker__lockNote">locked while recording</span>}
+        </legend>
+        <div className="picker__options">
+          {AUDIO_ORDER.map((key) => {
+            const a = AUDIO_MODES[key];
+            return (
+              <label key={key} className={`picker__option ${audio === key ? 'is-selected' : ''}`}>
+                <input
+                  type="radio"
+                  name="audio"
+                  value={key}
+                  checked={audio === key}
+                  onChange={() => chooseAudio(key)}
+                />
+                <span className="picker__name">{a.label}</span>
+                <span className="picker__note">{a.blurb}</span>
               </label>
             );
           })}
@@ -99,8 +187,14 @@ export default function App(): React.JSX.Element {
       <footer className="where">
         {captureInfo && activePreset ? (
           <span>
-            Recording {captureInfo.width}×{captureInfo.height} at {captureInfo.frameRate} fps, using
-            the {QUALITY_PRESETS[activePreset].label} preset (
+            Recording {captureInfo.width}×{captureInfo.height} at {captureInfo.frameRate} fps{' '}
+            {/* Reports the track that exists, never the setting that was chosen. */}
+            {captureInfo.audioObtained
+              ? 'with computer audio'
+              : captureInfo.audioRequested
+                ? 'with no sound (computer audio was unavailable)'
+                : 'with no sound'}
+            , using the {QUALITY_PRESETS[activePreset].label} preset (
             {Math.round(QUALITY_PRESETS[activePreset].videoBitsPerSecond / 1_000_000)} Mbps ceiling)
           </span>
         ) : (

@@ -17,19 +17,25 @@ resulting files from a built-in library.
 | Version | Name               | Phases | Status         | Completed  |
 | ------- | ------------------ | ------ | -------------- | ---------- |
 | v0.1    | Full-Screen Capture | 1      | ✅ Shipped     | 2026-09-17 |
-| v0.2    | Recordings Library  | 2      | 🚧 In Progress | -          |
+| v0.2    | Recordings Library  | 1      | ✅ Shipped     | 2026-09-18 |
+| v0.3    | Audio               | 1      | 🚧 In Progress | -          |
 
-## 🚧 Current Milestone: v0.2 Recordings Library
+## 🚧 Current Milestone: v0.3 Audio
 
-**Goal:** Find, play, and delete recordings without leaving the app — the second half of the core
-value, and the last piece that does not depend on the blocked window-capture path.
+**Goal:** Record sound alongside the picture — system audio, the microphone, or both mixed.
+
+This is 11 of the 16 remaining feature points, and it is next because window capture is blocked.
+The approach was written into `CLAUDE.md` during the first planning session and has not changed.
 
 ## Phases
 
 | Phase | Name               | Plans | Status      | Completed  |
 | ----- | ------------------ | ----- | ----------- | ---------- |
 | 1     | Capture to Disk    | 3     | ✅ Complete | 2026-09-17 |
-| 2     | Recordings Library | 2     | In progress | -          |
+| 2     | Recordings Library | 1     | ✅ Complete | 2026-09-18 |
+| 3     | Audio              | 2     | Planning    | -          |
+| 4     | Window and region  | TBD   | ⛔ Blocked  | -          |
+| 5     | Playback and controls | 2  | ✅ Applied  | 2026-09-18 |
 
 ## Phase Details
 
@@ -54,7 +60,22 @@ would be the wrong trade.
 **Plans:**
 
 - [x] 02-01: Library core — browse, play, delete — _complete 2026-09-17_
-- [ ] 02-02: Thumbnail generation and caching
+- [~] 02-02: Thumbnail generation and caching — **PARKED 2026-09-18**
+
+### Why 02-02 is parked, not cancelled
+
+Thumbnails add **zero feature points**. "Browse recordings in-app" was already counted as shipped
+in 02-01, so 02-02 is polish on a feature that already works — while audio is 11 points and window
+capture is blocked. Parking it is a sequencing decision, not a judgement on the work.
+
+Already built and committed from 02-02 (kept, not reverted):
+
+- `src/main/recordingPath.cjs` — request validation, single source of truth
+- `scripts/verify-guards.cjs` — `npm run verify:guards`, 16 refusals + 3 allowances asserted
+
+Still to do if resumed: the thumbnail cache (Task 1), generation and display (Task 2), and the two
+dev-only `__sim` hooks (Task 3b). The plan and its audit remain in place and stay valid — the tile
+placeholders in `Library.tsx` are already sized, so resuming causes no relayout.
 
 Split because combined this is 4+ tasks, past the 2-3 guidance. 02-01 ships a usable library with
 placeholder tiles; 02-02 fills them. A thumbnail **cache** keyed by path and mtime does not violate
@@ -93,15 +114,30 @@ real capture runs ~29 fps at a 30 fps target. The actual cause of the laggy moti
 jitter**, not frame rate — sampling a 60 Hz display at ~29 fps spans a non-integer number of
 refreshes. Raising the target to 60 fps halved the jitter and the user confirmed it resolved.
 
-**Expected build order beyond v0.1** (not yet committed to phases):
+### Phase 3: Audio
 
-1. Full-screen capture → save to disk
-2. Recordings library — browse, play, delete, reveal
-3. Window and region selection
-4. Audio — system, then microphone, then mixed
+**Goal:** Record system audio, the microphone, or both mixed, selectable before recording starts.
+**Depends on:** Phase 1 (capture path, save pipeline, quality presets)
+**Research:** Unlikely — the approach is documented in `CLAUDE.md`
 
-Audio is sequenced last on purpose: it is the piece most likely to force a rewrite, and the
-approach is already documented in `CLAUDE.md` so the knowledge survives between sessions.
+**Plans:**
+
+- [ ] 03-01: System audio — loopback capture and the audio-source control
+- [ ] 03-02: Microphone and mixing — device selection, Web Audio mix, level control
+
+Split because `MediaRecorder` accepts only one audio track: system audio alone is a straight
+addition to the existing capture call, while mic and mixing require a Web Audio graph. 03-01 ships
+a working system-audio recording; 03-02 adds the other two modes.
+
+### Phase 4: Window and region — ⛔ blocked
+
+Window capture measures **1.1 fps** through both capture paths (`npm run bench:capture --config
+window-capture`). Region capture additionally needs a crop pipeline, since `getDisplayMedia` cannot
+capture a sub-region. Neither is buildable on the current capture stack; a native Windows Graphics
+Capture module is the likely unblock, which is a much larger piece of work than any phase so far.
+
+**Reordering note:** audio was originally sequenced last, on the grounds that it was most likely to
+force a rewrite. Window capture turned out to be the blocked one instead, so audio moved up.
 
 ---
 

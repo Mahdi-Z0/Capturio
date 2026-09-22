@@ -16,7 +16,7 @@
       "group": "Capture",
       "weight": 4,
       "status": "blocked",
-      "note": "Measured 1.1 fps via both capture paths — needs a different mechanism"
+      "note": "Measured 1.1 fps via both capture paths \u2014 needs a different mechanism"
     },
     {
       "id": "capture-region",
@@ -33,15 +33,16 @@
       "weight": 1,
       "status": "done",
       "shipped": "01-01",
-      "note": "Current behaviour — no audio track is written at all"
+      "note": "Current behaviour \u2014 no audio track is written at all"
     },
     {
       "id": "audio-system",
       "name": "Record system audio",
       "group": "Audio",
       "weight": 4,
-      "status": "todo",
-      "note": "WASAPI loopback via the display-media handler"
+      "status": "done",
+      "note": "WASAPI loopback, persisted, reports the track that actually arrived",
+      "shipped": "03-01"
     },
     {
       "id": "audio-mic",
@@ -81,8 +82,8 @@
       "group": "Files",
       "weight": 4,
       "status": "done",
-      "shipped": "02-01",
-      "note": "3 most recent shown, expandable; inline playback plus open-in-default-player"
+      "shipped": "02-01, 05-01",
+      "note": "3 most recent shown, expandable; inline playback now seekable, plus open-in-default-player"
     },
     {
       "id": "library-delete",
@@ -101,6 +102,33 @@
       "status": "done",
       "note": "Three presets, persisted in userData; Balanced states its motion cost",
       "shipped": "01-03"
+    },
+    {
+      "id": "recording-indicator",
+      "name": "On-screen recording indicator",
+      "group": "Controls",
+      "weight": 3,
+      "status": "done",
+      "shipped": "05-02",
+      "note": "Always-on-top pill, excluded from capture (verified: 3919 px visible vs 0 protected)"
+    },
+    {
+      "id": "pause-resume",
+      "name": "Pause and resume a recording",
+      "group": "Controls",
+      "weight": 2,
+      "status": "done",
+      "shipped": "05-02",
+      "note": "MediaRecorder pause/resume; the clock excludes paused time"
+    },
+    {
+      "id": "mute-toggle",
+      "name": "Mute audio mid-recording",
+      "group": "Controls",
+      "weight": 1,
+      "status": "done",
+      "shipped": "05-02",
+      "note": "track.enabled=false records silence; the track is never stopped"
     }
   ],
   "foundation": [
