@@ -343,9 +343,15 @@ app.whenReady().then(async () => {
       desktopCapturer
         .getSources({ types, thumbnailSize: { width: 0, height: 0 } })
         .then((sources) => {
+          // Window mode must capture the MOTION window itself. It used to take
+          // sources[0] -- whatever window Windows listed first, usually static --
+          // and since WGC only delivers frames on change, that measured 1.1 fps and
+          // wrongly marked window capture as broken for three phases. Measured
+          // against the animated window it delivers ~59 fps (2026-09-22).
+          const motionId = motionWin && !motionWin.isDestroyed() ? motionWin.getMediaSourceId() : null;
           const src =
             config.mode === 'window'
-              ? sources[0]
+              ? sources.find((s) => s.id === motionId)
               : sources.find((s) => s.display_id === String(primary.id)) || sources[0];
           if (!src) {
             callback({});

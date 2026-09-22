@@ -17,6 +17,7 @@ import { createRangeResponse } from './byteRange.cjs';
 import { finalizeWebm } from './webmFinalize.cjs';
 import type {
   AudioMode,
+  CaptureTarget,
   HudState,
   CaptureSource,
   DisplayInfo,
@@ -30,7 +31,7 @@ import {
   isAudioMode,
   isQualityPreset,
   PLAYABLE_EXTENSIONS,
-  RECORDING_SCHEME, isHudCommand, DEFAULT_MIC_DEVICE,
+  RECORDING_SCHEME, isHudCommand, DEFAULT_MIC_DEVICE, SCREEN_TARGET, isWindowSourceId,
 } from '../shared/types.js';
 
 /**
@@ -550,21 +551,35 @@ function pickPrimaryScreen(
   return sources[0] ?? null;
 }
 
+/**
+ * What the next capture request should capture. Set by the renderer immediately
+ * before it calls getDisplayMedia; the handler below reads it.
+ */
+let captureTarget: CaptureTarget = SCREEN_TARGET;
+
 function registerDisplayMediaHandler(): void {
   session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+    const target = captureTarget;
+    const types: ('screen' | 'window')[] = target.kind === 'window' ? ['window'] : ['screen'];
     desktopCapturer
-      .getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } })
+      .getSources({ types, thumbnailSize: { width: 0, height: 0 } })
       .then((sources) => {
-        const source = pickPrimaryScreen(sources);
+        const source =
+          target.kind === 'window'
+            ? (sources.find((s) => s.id === target.id) ?? null)
+            : pickPrimaryScreen(sources);
         if (!source) {
-          console.error('[displayMedia] no screen sources available');
-          // Reject rather than hang, so the renderer can return to idle.
+          // A closed window is the usual cause. Reject rather than fall back to
+          // the screen: recording the whole desktop when someone asked for one
+          // window would capture exactly what they chose to leave out.
+          console.error(`[displayMedia] no source for target ${target.kind}`);
           callback({});
           return;
         }
         // 'loopback' is real WASAPI system audio on Windows. Only when the
         // renderer actually asked: requesting it unconditionally would attach a
-        // track to recordings the user chose to keep silent.
+        // track to recordings the user chose to keep silent. It is whole-system
+        // audio even for window capture -- Windows offers no per-window loopback.
         callback({ video: source, audio: request.audioRequested ? 'loopback' : undefined });
       })
       .catch((err: unknown) => {
@@ -583,12 +598,37 @@ function registerIpc(): void {
       thumbnailSize: { width: 320, height: 180 },
       fetchWindowIcons: false,
     });
-    return sources.map((s) => ({
-      id: s.id,
-      name: s.name,
-      kind: s.id.startsWith('screen:') ? 'screen' : 'window',
-      thumbnailDataUrl: s.thumbnail.toDataURL(),
-    }));
+    // Never offer this app's own windows: recording the recorder is never what
+    // anyone meant, and the overlay is excluded from capture anyway.
+    //
+    // Compared on the window handle (the middle segment of `window:<hwnd>:<n>`)
+    // rather than the whole id, so a difference in the trailing segment between
+    // getMediaSourceId() and desktopCapturer can never let this app through.
+    const handle = (id: string): string => id.split(':')[1] ?? id;
+    const own = new Set(
+      BrowserWindow.getAllWindows()
+        .filter((w) => !w.isDestroyed())
+        .map((w) => handle(w.getMediaSourceId())),
+    );
+    return sources
+      .filter((s) => !(s.id.startsWith('window:') && own.has(handle(s.id))))
+      .map((s) => ({
+        id: s.id,
+        name: s.name,
+        kind: s.id.startsWith('screen:') ? 'screen' : 'window',
+        thumbnailDataUrl: s.thumbnail.toDataURL(),
+      }));
+  });
+
+  ipcMain.handle('capture:set-target', (_e, target: unknown): void => {
+    const t = target as { kind?: unknown; id?: unknown; name?: unknown } | null;
+    if (t?.kind === 'screen') {
+      captureTarget = SCREEN_TARGET;
+    } else if (t?.kind === 'window' && isWindowSourceId(t.id)) {
+      captureTarget = { kind: 'window', id: t.id, name: typeof t.name === 'string' ? t.name : '' };
+    } else {
+      fail('capture:set-target', new Error('Invalid capture target'));
+    }
   });
 
   ipcMain.handle('display:primary', (): DisplayInfo => {

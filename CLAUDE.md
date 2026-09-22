@@ -6,13 +6,13 @@ clicks. When a choice arises between "powerful" and "obvious", pick obvious.
 
 ## Status
 
-**Working:** full-screen capture to disk, quality presets, system (loopback) audio, the recordings
+**Working:** full-screen and single-window capture to disk, quality presets, system (loopback) audio, the recordings
 library (browse, play, reveal, delete), crash recovery of `.part` files, seekable output, and the
 on-screen recording indicator with pause/resume and mute.
 
 Audio: none, computer, microphone, and computer + microphone mixed, with a microphone picker.
 
-**Not built:** window capture, region capture, thumbnails. Do not describe these as working.
+**Not built:** region capture, library thumbnails. Do not describe these as working.
 
 ## Stack
 
@@ -185,8 +185,12 @@ truncated file under the final name looks valid and is worse. `recoverOrphanedPa
 them at startup by renaming, never overwriting an existing recording. WebM is a streaming
 container, so a truncated one still decodes up to the cut.
 
-**Window capture is broken at ~1.1 fps** on this hardware via both paths. Phase 3 (window/region
-selection) cannot use it as-is. Measure before building on it.
+**Window capture works — the old "1.1 fps" was a benchmark bug.** The benchmark captured
+`sources[0]`, an arbitrary and usually static window, and Windows Graphics Capture only delivers a
+frame when content changes. Measured 2026-09-22 against an animated window: **58.7 fps, 2.5 ms
+jitter**, versus 53.0 fps / 5.9 ms for the full screen. A still window legitimately yields few frames;
+that is not a fault, and the recording's timestamps stay correct. Always capture a *moving* source
+when measuring, identified by `getMediaSourceId()`, never by list position.
 
 **Benchmark before believing.** `npm run bench:capture` exists because three separate quality
 "fixes" (bitrate, codec, scaler) were shipped against a frame-rate problem. It reports the motion

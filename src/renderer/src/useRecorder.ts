@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AudioMode, QualityPreset, Recording } from '../../shared/types.js';
+import type { AudioMode, CaptureTarget, QualityPreset, Recording } from '../../shared/types.js';
 import {
   AUDIO_MODES,
   audioShortfallNote,
   DEFAULT_MIC_DEVICE,
   IDLE_HUD_STATE,
+  SCREEN_TARGET,
   DEFAULT_AUDIO_MODE,
   DEFAULT_QUALITY,
   QUALITY_PRESETS,
@@ -212,7 +213,7 @@ export interface RecorderState {
   activePreset: QualityPreset | null;
   paused: boolean;
   muted: boolean;
-  start: () => Promise<void>;
+  start: (target?: CaptureTarget) => Promise<void>;
   stop: () => void;
   pause: () => void;
   resume: () => void;
@@ -264,7 +265,20 @@ export function useRecorder(): RecorderState {
 
   useEffect(() => {
     if (status !== 'recording') return;
-    const t = setInterval(() => setElapsedMs(elapsedNow()), 200);
+    const t = setInterval(() => {
+      setElapsedMs(elapsedNow());
+      // Keep the reported size honest. A window capture reports the screen's size
+      // until its first frame lands (seen: 1920x1080 shown for a 984x620 window),
+      // and a window can be resized mid-recording.
+      const s = streamRef.current?.getVideoTracks()[0]?.getSettings();
+      if (s?.width && s.height) {
+        setCaptureInfo((prev) =>
+          prev && (prev.width !== s.width || prev.height !== s.height)
+            ? { ...prev, width: s.width ?? prev.width, height: s.height ?? prev.height }
+            : prev,
+        );
+      }
+    }, 200);
     return () => clearInterval(t);
   }, [status, elapsedNow]);
 
@@ -318,7 +332,7 @@ export function useRecorder(): RecorderState {
     };
   }, []);
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (target: CaptureTarget = SCREEN_TARGET) => {
     // Guard re-entry: a double-click must not open two recorders on two .part files.
     if (status !== 'idle') return;
 
@@ -338,10 +352,19 @@ export function useRecorder(): RecorderState {
 
     let display: MediaStream;
     try {
+      // Main's display-media handler reads this, so it must land first.
+      await window.api.setCaptureTarget(target);
       display = (await acquireWithAudio(preset.frameRate, spec.system)).stream;
     } catch (err) {
       setStatus('idle');
-      setError(message(err));
+      // For a window, a refusal almost always means it was closed after being
+      // picked. "Capture was cancelled" would blame the user for something they
+      // did not do.
+      setError(
+        target.kind === 'window'
+          ? `"${target.name}" could not be recorded. It may have been closed; pick it again.`
+          : message(err),
+      );
       return;
     }
 

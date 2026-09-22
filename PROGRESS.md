@@ -5,15 +5,15 @@ _Last generated: 2026-09-22_
 
 ## Overall
 
-**80% of declared features**, by effort weight.
+**89% of declared features**, by effort weight.
 
 ```
-████████████████░░░░ 80%
+██████████████████░░ 89%
 ```
 
 | Measure | Value |
 | --- | --- |
-| Feature completion (weighted) | 80% — 37 of 46 points |
+| Feature completion (weighted) | 89% — 41 of 46 points |
 | Plans completed | 4 of 6 defined (67%) |
 | Foundation items done | 6 of 8 |
 | Current milestone | v0.1 Full-Screen Capture |
@@ -25,16 +25,14 @@ _Last generated: 2026-09-22_
 > cover work that has not been declared yet — Phases 2–4 exist only as a build order, not as plans.
 > Treat it as "how much of the intended product exists", not "how close to done".
 
-> ⛔ **9% of the remaining weight is blocked**, not merely unstarted. See the blocked rows below.
-
 ## Features
 
-### Capture — 36%
+### Capture — 64%
 
 | | Feature | Status | Shipped in | Note |
 | --- | --- | --- | --- | --- |
 | ✅ | Record the full screen | Done | 01-01 | 60 fps target, ~54 delivered, stable intervals |
-| ⛔ | Record a specific window | Blocked | — | Measured 1.1 fps via both capture paths — needs a different mechanism |
+| ✅ | Record a specific window | Done | 04-01 | 58.7 fps on an animated window; picker with thumbnails |
 | ⬜ | Record a selected region | Not started | — | getDisplayMedia cannot sub-region; needs a crop pipeline |
 
 ### Audio — 100%

@@ -10,6 +10,21 @@ export interface CaptureSource {
 }
 
 /**
+ * What the next recording captures.
+ *
+ * Not persisted: a window id is only meaningful for as long as that window
+ * exists, so restoring one across restarts would point at nothing.
+ */
+export type CaptureTarget = { kind: 'screen' } | { kind: 'window'; id: string; name: string };
+
+export const SCREEN_TARGET: CaptureTarget = { kind: 'screen' };
+
+/** desktopCapturer window ids look like `window:394124:1`. */
+export function isWindowSourceId(v: unknown): v is string {
+  return typeof v === 'string' && /^window:\d+:\d+$/.test(v);
+}
+
+/**
  * A recording that has been fully written and renamed into place.
  * Only fields the code actually populates are declared here — a field that is
  * never set is a lie the type system will happily repeat.
@@ -233,6 +248,8 @@ export function isHudCommand(v: unknown): v is HudCommand {
  */
 export interface RecorderApi {
   listSources(): Promise<CaptureSource[]>;
+  /** Set what the next getDisplayMedia call captures. Read by main's handler. */
+  setCaptureTarget(target: CaptureTarget): Promise<void>;
   getPrimaryDisplay(): Promise<DisplayInfo>;
 
   getQuality(): Promise<QualityPreset>;

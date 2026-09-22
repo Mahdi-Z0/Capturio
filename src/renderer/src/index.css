@@ -604,3 +604,95 @@ body {
   color: var(--warn);
   font-size: 12px;
 }
+
+/* Source choice. Same shape as quality and sound; two columns, room for a
+   third ("A region") that wraps to a second row. */
+.picker--source .picker__options {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+/* Window grid: thumbnails, because titles alone are ambiguous. */
+.windows {
+  border: none;
+  margin: 12px 0 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.windows__legend {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 0;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--ink-dim);
+}
+
+.windows__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+  max-height: 290px;
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.windows__item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 7px;
+  border: 1px solid var(--edge);
+  border-radius: 9px;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.windows__item input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.windows__item:hover {
+  border-color: #3b3f52;
+}
+
+.windows__item.is-selected {
+  border-color: #5a6080;
+  background: var(--raised);
+}
+
+.windows__item:focus-within {
+  outline: 2px solid #6f8cff;
+  outline-offset: 2px;
+}
+
+.windows:disabled .windows__item {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.windows__thumb {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  background: #0d0e13;
+  border-radius: 5px;
+}
+
+.windows__name {
+  font-size: 12px;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.windows__empty {
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: var(--ink-dim);
+}

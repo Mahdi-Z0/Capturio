@@ -15,8 +15,9 @@
       "name": "Record a specific window",
       "group": "Capture",
       "weight": 4,
-      "status": "blocked",
-      "note": "Measured 1.1 fps via both capture paths \u2014 needs a different mechanism"
+      "status": "done",
+      "note": "58.7 fps on an animated window; picker with thumbnails",
+      "shipped": "04-01"
     },
     {
       "id": "capture-region",

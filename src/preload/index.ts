@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
   AudioMode,
+  CaptureTarget,
   HudCommand,
   HudState,
   CaptureSource,
@@ -20,6 +21,8 @@ import type {
  */
 const api = {
   listSources: (): Promise<CaptureSource[]> => ipcRenderer.invoke('sources:list'),
+  setCaptureTarget: (target: CaptureTarget): Promise<void> =>
+    ipcRenderer.invoke('capture:set-target', target),
   getPrimaryDisplay: (): Promise<DisplayInfo> => ipcRenderer.invoke('display:primary'),
 
   getQuality: (): Promise<QualityPreset> => ipcRenderer.invoke('settings:get-quality'),

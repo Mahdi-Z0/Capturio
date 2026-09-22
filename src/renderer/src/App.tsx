@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRecorder } from './useRecorder.js';
 import Library from './Library.js';
 import MicPicker from './MicPicker.js';
+import WindowPicker from './WindowPicker.js';
 import type { CaptureInfo } from './useRecorder.js';
 import {
   AUDIO_MODES,
@@ -9,7 +10,9 @@ import {
   DEFAULT_AUDIO_MODE,
   DEFAULT_QUALITY,
   QUALITY_PRESETS,
+  SCREEN_TARGET,
   type AudioMode,
+  type CaptureTarget,
   type QualityPreset,
 } from '../../shared/types.js';
 
@@ -52,6 +55,8 @@ export default function App(): React.JSX.Element {
   const [dir, setDir] = useState('');
   const [quality, setQuality] = useState<QualityPreset>(DEFAULT_QUALITY);
   const [audio, setAudio] = useState<AudioMode>(DEFAULT_AUDIO_MODE);
+  const [sourceKind, setSourceKind] = useState<'screen' | 'window'>('screen');
+  const [windowTarget, setWindowTarget] = useState<CaptureTarget | null>(null);
 
   useEffect(() => {
     window.api
@@ -89,14 +94,24 @@ export default function App(): React.JSX.Element {
   // the gap where the clock is showing and the error line is not.
   const audioNote = captureInfo?.audioNote ?? null;
 
+  const target: CaptureTarget | null = sourceKind === 'screen' ? SCREEN_TARGET : windowTarget;
+  const pickWindow = useCallback((t: CaptureTarget | null) => setWindowTarget(t), []);
+  const idleText =
+    target === null
+      ? 'Pick a window below to record it.'
+      : target.kind === 'window'
+        ? `Ready to record “${target.name}”.`
+        : 'Ready to record your main screen.';
+
   return (
     <main className="shell">
       <div className="stage">
         <button
           type="button"
           className={`trigger ${recording ? 'is-recording' : ''}`}
-          onClick={() => (recording ? stop() : void start())}
-          disabled={busy}
+          onClick={() => (recording ? stop() : target && void start(target))}
+          // Nothing to record yet is a reason to disable, not to fail on click.
+          disabled={busy || (!recording && target === null)}
           aria-label={recording ? 'Stop recording' : 'Start recording'}
         >
           <span className="trigger__glyph" aria-hidden="true" />
@@ -111,7 +126,7 @@ export default function App(): React.JSX.Element {
               {paused && <span className="clock__note">paused</span>}
             </span>
           )}
-          {status === 'idle' && (error ? error : 'Ready to record your main screen.')}
+          {status === 'idle' && (error ? error : idleText)}
           {locked && audioNote && <span className="readout__warn">{audioNote}</span>}
         </p>
         {/* Mirrors the overlay indicator. The overlay is reachable while other
@@ -135,6 +150,40 @@ export default function App(): React.JSX.Element {
           </div>
         )}
       </div>
+
+      <fieldset className="picker picker--source" disabled={locked}>
+        <legend className="picker__legend">
+          What to record
+          {locked && <span className="picker__lockNote">locked while recording</span>}
+        </legend>
+        <div className="picker__options">
+          {(
+            [
+              ['screen', 'Entire screen', 'Everything on your main display'],
+              ['window', 'One window', 'Only the app you pick'],
+            ] as const
+          ).map(([key, label, blurb]) => (
+            <label key={key} className={`picker__option ${sourceKind === key ? 'is-selected' : ''}`}>
+              <input
+                type="radio"
+                name="source"
+                value={key}
+                checked={sourceKind === key}
+                onChange={() => setSourceKind(key)}
+              />
+              <span className="picker__name">{label}</span>
+              <span className="picker__note">{blurb}</span>
+            </label>
+          ))}
+        </div>
+        {sourceKind === 'window' && (
+          <WindowPicker
+            selectedId={windowTarget?.kind === 'window' ? windowTarget.id : null}
+            onSelect={pickWindow}
+            disabled={locked}
+          />
+        )}
+      </fieldset>
 
       <fieldset className="picker picker--quality" disabled={locked}>
         <legend className="picker__legend">

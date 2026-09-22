@@ -81,7 +81,7 @@ PLAN ──▶ APPLY ──▶ UNIFY
 | MP4 cannot replace WebM | Chromium's MP4 muxer emits nothing until stop — 750 MB in memory for 5 min, and a power cut loses everything | Measured 2026-09-18. Re-measure before revisiting |
 | Finalize fallback is unexercised | If `finalizeWebm` throws, the recording should still land by plain rename — correct by construction, never forced | A dev-only `__sim` hook, as was done for AC-5/AC-7 |
 | `frontend-design` was not invocable in a resumed session | A plan marked it **blocking** | Guidance read from the installed plugin on disk instead. If a future plan blocks on a skill, check it resolves before APPLY |
-| Window capture measures 1.1 fps | **Blocks Phase 4** (window/region), which was reordered behind audio | A native Windows Graphics Capture module is the likely unblock — much larger than any phase so far |
+| ~~Window capture measures 1.1 fps~~ — **benchmark bug, fixed 2026-09-22**: 58.7 fps on an animated window | **Blocks Phase 4** (window/region), which was reordered behind audio | A native Windows Graphics Capture module is the likely unblock — much larger than any phase so far |
 | 02-02 thumbnails parked 2026-09-18 | Adds 0 feature points; browse was already counted in 02-01 | Plan and audit remain valid; tile placeholders already sized, so resuming causes no relayout |
 | Ceremony reduced by request | Audit skipped for plans that do not touch data safety or security | 03-01 adds no delete path and no new CSP source, so the audit's usual targets are absent |
 | Gradient banding root cause is 8-bit 4:2:0 chroma, which MediaRecorder cannot avoid | May persist despite higher bitrate | Needs a different capture path if it matters |
@@ -109,8 +109,8 @@ Protected for Plan 03-01:
 ## Session Continuity
 
 Last session: 2026-09-18
-Stopped at: 03-02 (microphone + mixing) built and verified in the built app; uncommitted. Phase 3 Audio complete pending user check
-Next action: User tries a microphone recording; commit 03-02; then decide between Phase 4 (window/region, blocked on 1.1 fps window capture) and thumbnails (02-02, parked)
+Stopped at: 04-01 window capture built and verified in the built app; uncommitted (03-02 committed at 76f73b3)
+Next action: 04-02 region capture (crop the display: breakout-box VideoFrame crop vs canvas, measure jitter for both)
 Resume file: .paul/phases/05-playback-and-controls/05-02-SUMMARY.md
 
 **Repository:** committed at 3546d68. Phases 1 and 2 tracked; working tree clean at commit.
