@@ -6,13 +6,13 @@ clicks. When a choice arises between "powerful" and "obvious", pick obvious.
 
 ## Status
 
-**Working:** full-screen and single-window capture to disk, quality presets, system (loopback) audio, the recordings
+**Working:** full-screen, single-window and region capture to disk, quality presets, system (loopback) audio, the recordings
 library (browse, play, reveal, delete), crash recovery of `.part` files, seekable output, and the
 on-screen recording indicator with pause/resume and mute.
 
 Audio: none, computer, microphone, and computer + microphone mixed, with a microphone picker.
 
-**Not built:** region capture, library thumbnails. Do not describe these as working.
+**Not built:** library thumbnails. Do not describe these as working.
 
 ## Stack
 
@@ -132,10 +132,33 @@ is fine. Decode the file bytes directly instead.
 **Muting mid-recording sets `track.enabled = false`,** which records silence. Never stop the track
 instead: MediaRecorder cannot add one back, so unmuting would be impossible.
 
-**Region capture.** `getDisplayMedia` cannot capture a sub-region. Capture the full display, then
-crop. Start with a canvas pipeline (`drawImage` the video into a cropped canvas,
-`canvas.captureStream()`); move to `MediaStreamTrackProcessor` + `VideoFrame` only if the canvas
-approach costs too much CPU.
+**Region capture.** `getDisplayMedia` cannot capture a sub-region, so the full display is captured
+and cropped in the renderer by `cropTrack()` in `useRecorder.ts`.
+
+This uses the **breakout box** (`MediaStreamTrackProcessor` -> `new VideoFrame(frame, {visibleRect})`
+-> `MediaStreamTrackGenerator`), not the canvas pipeline this file used to prescribe. Measured
+2026-09-23 on an 876x376 crop of a 60 fps source:
+
+| crop | fps | jitter | CPU |
+| --- | --- | --- | --- |
+| canvas (`drawImage` + `captureStream`) | 53.2 | 5.7 ms | 9% |
+| **breakout box** | **55.3** | **4.8 ms** | **5.5%** |
+
+Better on all three, and lower jitter than the *uncropped* feed, because it forwards each source
+frame with its own timestamp instead of redrawing on a callback. Declarations live in
+`dom-augment.d.ts` -- neither class is in TypeScript's DOM lib.
+
+**The crop rect must be even.** Chroma is subsampled 2x2, so an odd offset or size is not
+representable and Chromium rejects the frame. `cropTrack` rounds to even and clamps to the capture.
+
+**Scale by the track, not the display.** The rect arrives in display points; the capture is in
+physical pixels. Divide by what the track reports (`settings.width / displayWidthInPoints`), since
+the capture is not always the display's full resolution. Verified: a 600x400 region on a 1.25-scale
+display produces a 750x500 file.
+
+`onended` must watch the **source** track, not the cropped one: a capture that stops externally
+would otherwise go unnoticed. The live size readout is likewise suppressed while cropping, because
+the track's own settings describe the whole screen.
 
 **Container.** Check `MediaRecorder.isTypeSupported()` at runtime rather than hardcoding, and
 prefer **webm/vp9**, falling back to mp4/avc1.
@@ -191,6 +214,16 @@ frame when content changes. Measured 2026-09-22 against an animated window: **58
 jitter**, versus 53.0 fps / 5.9 ms for the full screen. A still window legitimately yields few frames;
 that is not a fault, and the recording's timestamps stay correct. Always capture a *moving* source
 when measuring, identified by `getMediaSourceId()`, never by list position.
+
+**Full-screen capture can silently drop to ~12 fps — an OS state, not app code.** Seen 2026-09-22:
+the same benchmark gave 53 fps in the morning and 12 fps that afternoon, window capture unaffected
+(56 fps), reproduced by a bare probe with none of this app's code. Chromium's logs
+(`--enable-logging=stderr --v=1 --vmodule=*desktop_capture*=2,*dxgi*=2,*wgc*=2`) showed why:
+`Cannot initialize any DxgiOutputDuplicator instance` on both adapters (this is a hybrid Intel UHD
+630 + GTX 1650 laptop), so Chromium fell back to WGC monitor capture, where `ProcessFrame failed,
+using existing frame` fired on ~3 of every 4 ticks. Ruled out: GPU choice (`--force_low_power_gpu`
+/ `--force_high_performance_gpu`), WGC feature flags, direct composition, window focus, power plan.
+Before blaming code for choppy full-screen recordings, run those logs first.
 
 **Benchmark before believing.** `npm run bench:capture` exists because three separate quality
 "fixes" (bitrate, codec, scaler) were shipped against a frame-rate problem. It reports the motion
@@ -254,7 +287,9 @@ revisiting.
 ## The recording indicator
 
 A frameless always-on-top `BrowserWindow` (`showOverlay()` in `src/main/index.ts`), rendered by
-`Overlay.tsx` from the same bundle via the `#overlay` hash.
+`Overlay.tsx` from the same bundle via the `#overlay` hash. The region selector (`#region`) and the
+red region outline shown while recording are two more such windows; all of them call
+`setContentProtection(true)` so none can appear in a recording.
 
 **`setContentProtection(true)` is what keeps it out of the recording** — WDA_EXCLUDEFROMCAPTURE on
 Windows 10 2004+. Verified by capturing the screen with a known colour on screen: 3919 matching

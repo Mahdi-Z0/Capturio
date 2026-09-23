@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type {
   AudioMode,
   CaptureTarget,
+  RegionRect,
   HudCommand,
   HudState,
   CaptureSource,
@@ -23,6 +24,12 @@ const api = {
   listSources: (): Promise<CaptureSource[]> => ipcRenderer.invoke('sources:list'),
   setCaptureTarget: (target: CaptureTarget): Promise<void> =>
     ipcRenderer.invoke('capture:set-target', target),
+  selectRegion: (): Promise<RegionRect | null> => ipcRenderer.invoke('region:select'),
+
+  // Used only by the region selector window, to report its result.
+  reportRegion: (rect: RegionRect | null): void => {
+    ipcRenderer.send('region:result', rect);
+  },
   getPrimaryDisplay: (): Promise<DisplayInfo> => ipcRenderer.invoke('display:primary'),
 
   getQuality: (): Promise<QualityPreset> => ipcRenderer.invoke('settings:get-quality'),

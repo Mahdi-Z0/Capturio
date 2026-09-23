@@ -18,6 +18,7 @@ import { finalizeWebm } from './webmFinalize.cjs';
 import type {
   AudioMode,
   CaptureTarget,
+  RegionRect,
   HudState,
   CaptureSource,
   DisplayInfo,
@@ -31,7 +32,7 @@ import {
   isAudioMode,
   isQualityPreset,
   PLAYABLE_EXTENSIONS,
-  RECORDING_SCHEME, isHudCommand, DEFAULT_MIC_DEVICE, SCREEN_TARGET, isWindowSourceId,
+  RECORDING_SCHEME, isHudCommand, DEFAULT_MIC_DEVICE, SCREEN_TARGET, isWindowSourceId, isRegionRect,
 } from '../shared/types.js';
 
 /**
@@ -560,6 +561,8 @@ let captureTarget: CaptureTarget = SCREEN_TARGET;
 function registerDisplayMediaHandler(): void {
   session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
     const target = captureTarget;
+    // A region is a screen capture that the renderer crops; only a window needs
+    // a different source list.
     const types: ('screen' | 'window')[] = target.kind === 'window' ? ['window'] : ['screen'];
     desktopCapturer
       .getSources({ types, thumbnailSize: { width: 0, height: 0 } })
@@ -620,12 +623,16 @@ function registerIpc(): void {
       }));
   });
 
+  ipcMain.handle('region:select', (): Promise<RegionRect | null> => selectRegion());
+
   ipcMain.handle('capture:set-target', (_e, target: unknown): void => {
-    const t = target as { kind?: unknown; id?: unknown; name?: unknown } | null;
+    const t = target as { kind?: unknown; id?: unknown; name?: unknown; rect?: unknown } | null;
     if (t?.kind === 'screen') {
       captureTarget = SCREEN_TARGET;
     } else if (t?.kind === 'window' && isWindowSourceId(t.id)) {
       captureTarget = { kind: 'window', id: t.id, name: typeof t.name === 'string' ? t.name : '' };
+    } else if (t?.kind === 'region' && isRegionRect(t.rect)) {
+      captureTarget = { kind: 'region', rect: t.rect };
     } else {
       fail('capture:set-target', new Error('Invalid capture target'));
     }
@@ -862,6 +869,118 @@ function registerIpc(): void {
   });
 }
 
+/* ------------------------------------------------------------------ region */
+
+let regionWindow: BrowserWindow | null = null;
+let outlineWindow: BrowserWindow | null = null;
+
+/**
+ * Full-screen selector for choosing a region by dragging.
+ *
+ * Transparent and frameless over the whole primary display, so the drag happens
+ * against what is actually on screen rather than a preview of it. Resolves the
+ * chosen rect in display points, or null when cancelled.
+ */
+function selectRegion(): Promise<RegionRect | null> {
+  if (regionWindow && !regionWindow.isDestroyed()) {
+    regionWindow.focus();
+    return Promise.resolve(null);
+  }
+
+  const { bounds } = screen.getPrimaryDisplay();
+  return new Promise((resolve) => {
+    const win = new BrowserWindow({
+      ...bounds,
+      frame: false,
+      transparent: true,
+      resizable: false,
+      movable: false,
+      skipTaskbar: true,
+      alwaysOnTop: true,
+      fullscreenable: false,
+      hasShadow: false,
+      backgroundColor: '#00000000',
+      webPreferences: {
+        preload: join(__dirname, '../preload/index.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: false,
+      },
+    });
+    regionWindow = win;
+    win.setAlwaysOnTop(true, 'screen-saver');
+    // Excluded from capture like the indicator: the selector is scaffolding, and
+    // a recording that starts while it is still fading out must not contain it.
+    win.setContentProtection(true);
+
+    let settled = false;
+    const finish = (rect: RegionRect | null): void => {
+      if (settled) return;
+      settled = true;
+      resolve(rect);
+      if (!win.isDestroyed()) win.close();
+    };
+
+    ipcMain.once('region:result', (_e, rect: unknown) => finish(isRegionRect(rect) ? rect : null));
+    // Closed by any other means (Alt+F4, focus loss) is a cancel, not a hang.
+    win.on('closed', () => {
+      regionWindow = null;
+      finish(null);
+    });
+
+    const url = process.env['ELECTRON_RENDERER_URL'];
+    if (url) void win.loadURL(`${url}#region`);
+    else void win.loadFile(join(__dirname, '../renderer/index.html'), { hash: 'region' });
+    win.once('ready-to-show', () => win.show());
+  });
+}
+
+/**
+ * A thin outline around the region being recorded.
+ *
+ * Click-through and excluded from capture, so it shows the boundary without
+ * appearing in the file or blocking the work underneath. Drawn just outside the
+ * region, or it would cover the edge pixels it is describing.
+ */
+function showOutline(rect: RegionRect): void {
+  hideOutline();
+  const { bounds } = screen.getPrimaryDisplay();
+  const pad = 2;
+  const win = new BrowserWindow({
+    x: Math.round(bounds.x + rect.x - pad),
+    y: Math.round(bounds.y + rect.y - pad),
+    width: Math.round(rect.width + pad * 2),
+    height: Math.round(rect.height + pad * 2),
+    frame: false,
+    transparent: true,
+    resizable: false,
+    movable: false,
+    focusable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    hasShadow: false,
+    backgroundColor: '#00000000',
+  });
+  win.setIgnoreMouseEvents(true);
+  win.setAlwaysOnTop(true, 'screen-saver');
+  win.setContentProtection(true);
+  void win.loadURL(
+    'data:text/html,' +
+      encodeURIComponent(
+        `<body style="margin:0;background:transparent">
+           <div style="position:fixed;inset:0;border:${pad}px solid #ff4d4d;border-radius:2px"></div>
+         </body>`,
+      ),
+  );
+  win.showInactive();
+  outlineWindow = win;
+}
+
+function hideOutline(): void {
+  if (outlineWindow && !outlineWindow.isDestroyed()) outlineWindow.close();
+  outlineWindow = null;
+}
+
 /* ------------------------------------------------------------------ overlay */
 
 let overlayWindow: BrowserWindow | null = null;
@@ -947,8 +1066,13 @@ function registerHudRelay(): void {
   // Recorder -> overlay. Also owns the overlay's lifetime: the recorder is the
   // only thing that knows whether a recording exists.
   ipcMain.on('hud:state', (_e, state: HudState) => {
-    if (state?.recording) showOverlay();
-    else hideOverlay();
+    if (state?.recording) {
+      showOverlay();
+      if (captureTarget.kind === 'region') showOutline(captureTarget.rect);
+    } else {
+      hideOverlay();
+      hideOutline();
+    }
     if (overlayWindow && !overlayWindow.isDestroyed()) {
       overlayWindow.webContents.send('hud:state', state);
     }
@@ -992,6 +1116,7 @@ function createWindow(): void {
   win.on('closed', () => {
     mainWindow = null;
     hideOverlay();
+    hideOutline();
   });
 
   win.webContents.setWindowOpenHandler(({ url }) => {

@@ -1,0 +1,66 @@
+/*
+ * Region selector, in its own transparent full-screen window.
+ *
+ * Scoped to .region-mode for the same reason the overlay is: all three windows
+ * share one bundle, so an unscoped transparent body would strip the main
+ * window's background.
+ */
+
+.region-mode,
+.region-mode body,
+.region-mode #root {
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  overflow: hidden;
+  cursor: crosshair;
+  user-select: none;
+}
+
+.region {
+  position: fixed;
+  inset: 0;
+  /* Dim everything, then cut the selection back out below. The contrast is the
+     instruction: bright is what gets recorded. */
+  background: rgba(10, 11, 16, 0.45);
+}
+
+.region__box {
+  position: fixed;
+  border: 1px solid #ff4d4d;
+  /* A hole in the dimming layer, rather than a lighter patch painted on top. */
+  box-shadow: 0 0 0 100vmax rgba(10, 11, 16, 0.45);
+  background: transparent;
+}
+
+.region__box.is-small {
+  border-color: #e0b062;
+}
+
+.region__size {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 6px;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: rgba(18, 19, 26, 0.92);
+  color: #f2f3f7;
+  font: 12px/1 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.region__hint {
+  position: fixed;
+  left: 50%;
+  top: 40%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: rgba(18, 19, 26, 0.92);
+  border: 1px solid #343847;
+  color: #f2f3f7;
+  font: 14px 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+}

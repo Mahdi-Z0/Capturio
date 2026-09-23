@@ -15,7 +15,38 @@ export interface CaptureSource {
  * Not persisted: a window id is only meaningful for as long as that window
  * exists, so restoring one across restarts would point at nothing.
  */
-export type CaptureTarget = { kind: 'screen' } | { kind: 'window'; id: string; name: string };
+export type CaptureTarget =
+  | { kind: 'screen' }
+  | { kind: 'window'; id: string; name: string }
+  | { kind: 'region'; rect: RegionRect };
+
+/**
+ * A screen region, in display-independent points relative to the primary
+ * display's top-left -- the same units `screen.getPrimaryDisplay().bounds` uses.
+ *
+ * Not pixels: the capture is in physical pixels and the selector window works in
+ * points, so one of them has to be converted, and points are what both Electron
+ * and the DOM hand us.
+ */
+export interface RegionRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** Smaller than this and a drag was a stray click, not a selection. */
+export const MIN_REGION_SIZE = 16;
+
+export function isRegionRect(v: unknown): v is RegionRect {
+  if (typeof v !== 'object' || v === null) return false;
+  const r = v as Record<string, unknown>;
+  return (
+    ['x', 'y', 'width', 'height'].every((k) => typeof r[k] === 'number' && Number.isFinite(r[k])) &&
+    (r.width as number) >= MIN_REGION_SIZE &&
+    (r.height as number) >= MIN_REGION_SIZE
+  );
+}
 
 export const SCREEN_TARGET: CaptureTarget = { kind: 'screen' };
 
@@ -250,6 +281,10 @@ export interface RecorderApi {
   listSources(): Promise<CaptureSource[]>;
   /** Set what the next getDisplayMedia call captures. Read by main's handler. */
   setCaptureTarget(target: CaptureTarget): Promise<void>;
+  /** Open the region selector. Resolves null if cancelled. */
+  selectRegion(): Promise<RegionRect | null>;
+  /** Region selector window only: report the chosen rect, or null to cancel. */
+  reportRegion(rect: RegionRect | null): void;
   getPrimaryDisplay(): Promise<DisplayInfo>;
 
   getQuality(): Promise<QualityPreset>;

@@ -24,8 +24,9 @@
       "name": "Record a selected region",
       "group": "Capture",
       "weight": 5,
-      "status": "todo",
-      "note": "getDisplayMedia cannot sub-region; needs a crop pipeline"
+      "status": "done",
+      "note": "Drag to select; cropped with the breakout box (lower jitter and CPU than canvas)",
+      "shipped": "04-02"
     },
     {
       "id": "audio-none",

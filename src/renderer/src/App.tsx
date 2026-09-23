@@ -13,6 +13,7 @@ import {
   SCREEN_TARGET,
   type AudioMode,
   type CaptureTarget,
+  type RegionRect,
   type QualityPreset,
 } from '../../shared/types.js';
 
@@ -55,8 +56,9 @@ export default function App(): React.JSX.Element {
   const [dir, setDir] = useState('');
   const [quality, setQuality] = useState<QualityPreset>(DEFAULT_QUALITY);
   const [audio, setAudio] = useState<AudioMode>(DEFAULT_AUDIO_MODE);
-  const [sourceKind, setSourceKind] = useState<'screen' | 'window'>('screen');
+  const [sourceKind, setSourceKind] = useState<'screen' | 'window' | 'region'>('screen');
   const [windowTarget, setWindowTarget] = useState<CaptureTarget | null>(null);
+  const [region, setRegion] = useState<RegionRect | null>(null);
 
   useEffect(() => {
     window.api
@@ -94,14 +96,34 @@ export default function App(): React.JSX.Element {
   // the gap where the clock is showing and the error line is not.
   const audioNote = captureInfo?.audioNote ?? null;
 
-  const target: CaptureTarget | null = sourceKind === 'screen' ? SCREEN_TARGET : windowTarget;
+  const target: CaptureTarget | null =
+    sourceKind === 'screen'
+      ? SCREEN_TARGET
+      : sourceKind === 'window'
+        ? windowTarget
+        : region
+          ? { kind: 'region', rect: region }
+          : null;
   const pickWindow = useCallback((t: CaptureTarget | null) => setWindowTarget(t), []);
   const idleText =
     target === null
-      ? 'Pick a window below to record it.'
+      ? sourceKind === 'region'
+        ? 'Choose a region below to record it.'
+        : 'Pick a window below to record it.'
       : target.kind === 'window'
         ? `Ready to record “${target.name}”.`
-        : 'Ready to record your main screen.';
+        : target.kind === 'region'
+          ? `Ready to record a ${target.rect.width} × ${target.rect.height} region.`
+          : 'Ready to record your main screen.';
+
+  const chooseRegion = useCallback(() => {
+    window.api
+      .selectRegion()
+      // Cancelling keeps whatever was chosen before, so an accidental Esc does
+      // not discard a region that was already set.
+      .then((r) => r && setRegion(r))
+      .catch(() => undefined);
+  }, []);
 
   return (
     <main className="shell">
@@ -161,6 +183,7 @@ export default function App(): React.JSX.Element {
             [
               ['screen', 'Entire screen', 'Everything on your main display'],
               ['window', 'One window', 'Only the app you pick'],
+              ['region', 'A region', 'Any rectangle you drag'],
             ] as const
           ).map(([key, label, blurb]) => (
             <label key={key} className={`picker__option ${sourceKind === key ? 'is-selected' : ''}`}>
@@ -176,6 +199,18 @@ export default function App(): React.JSX.Element {
             </label>
           ))}
         </div>
+        {sourceKind === 'region' && (
+          <div className="region__choice">
+            <button type="button" className="liveBtn" onClick={chooseRegion} disabled={locked}>
+              {region ? 'Choose a different region' : 'Choose region…'}
+            </button>
+            {region && (
+              <span className="region__chosen">
+                {region.width} × {region.height} at ({region.x}, {region.y})
+              </span>
+            )}
+          </div>
+        )}
         {sourceKind === 'window' && (
           <WindowPicker
             selectedId={windowTarget?.kind === 'window' ? windowTarget.id : null}

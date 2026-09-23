@@ -84,6 +84,7 @@ PLAN ──▶ APPLY ──▶ UNIFY
 | ~~Window capture measures 1.1 fps~~ — **benchmark bug, fixed 2026-09-22**: 58.7 fps on an animated window | **Blocks Phase 4** (window/region), which was reordered behind audio | A native Windows Graphics Capture module is the likely unblock — much larger than any phase so far |
 | 02-02 thumbnails parked 2026-09-18 | Adds 0 feature points; browse was already counted in 02-01 | Plan and audit remain valid; tile placeholders already sized, so resuming causes no relayout |
 | Ceremony reduced by request | Audit skipped for plans that do not touch data safety or security | 03-01 adds no delete path and no new CSP source, so the audit's usual targets are absent |
+| ~~Full-screen capture at ~12 fps~~ — **cleared by a reboot 2026-09-23** (48 fps) | Real recordings affected (measured 13 frames/s on playback); region capture would inherit it | OS state: DXGI duplication fails on both adapters, WGC monitor capture starved. Not app code. Reboot, then re-measure |
 | Gradient banding root cause is 8-bit 4:2:0 chroma, which MediaRecorder cannot avoid | May persist despite higher bitrate | Needs a different capture path if it matters |
 | ~~Quality picker deferred~~ | **Shipped 01-03**: three presets, persisted, Balanced states its motion cost | Closed |
 | 12 fps measurement may be confounded by the test animation own render rate | Root-cause claim unproven | **AC-1 of 01-02**, now with an explicit ≥2x decision rule |
@@ -109,8 +110,8 @@ Protected for Plan 03-01:
 ## Session Continuity
 
 Last session: 2026-09-18
-Stopped at: 04-01 window capture built and verified in the built app; uncommitted (03-02 committed at 76f73b3)
-Next action: 04-02 region capture (crop the display: breakout-box VideoFrame crop vs canvas, measure jitter for both)
+Stopped at: 04-02 region capture built and verified in the built app
+Next action: User tries region + window recording; then only library thumbnails (02-02, parked) remain of the declared features
 Resume file: .paul/phases/05-playback-and-controls/05-02-SUMMARY.md
 
 **Repository:** committed at 3546d68. Phases 1 and 2 tracked; working tree clean at commit.

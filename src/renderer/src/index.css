@@ -696,3 +696,22 @@ body {
   font-size: 13px;
   color: var(--ink-dim);
 }
+
+/* Region choice, under the source picker. */
+.picker--source .picker__options {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.region__choice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.region__chosen {
+  font-size: 13px;
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
