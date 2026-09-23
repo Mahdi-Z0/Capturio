@@ -262,11 +262,16 @@ export const IDLE_HUD_STATE: HudState = {
   muted: false,
 };
 
-/** Buttons on the overlay. The recorder, not the overlay, decides what they do. */
-export type HudCommand = 'stop' | 'pause' | 'resume' | 'toggle-mute';
+/**
+ * Commands the bar can receive from main -- today only the global hotkey.
+ * 'toggle' means start or stop, whichever applies.
+ */
+export type HudCommand = 'toggle' | 'stop' | 'pause' | 'resume' | 'toggle-mute';
 
 export function isHudCommand(v: unknown): v is HudCommand {
-  return v === 'stop' || v === 'pause' || v === 'resume' || v === 'toggle-mute';
+  return (
+    v === 'toggle' || v === 'stop' || v === 'pause' || v === 'resume' || v === 'toggle-mute'
+  );
 }
 
 /**
@@ -305,6 +310,18 @@ export interface RecorderApi {
   listRecordings(): Promise<RecordingListItem[]>;
   deleteRecording(filePath: string, permanent: boolean): Promise<void>;
   openRecordingExternally(filePath: string): Promise<void>;
+
+  /** Recorder -> recordings window: a new recording landed. */
+  announceRecording(filePath: string): void;
+  /** Recordings window: listen for new recordings. Returns an unsubscribe. */
+  onRecordingsChanged(handler: (filePath: string) => void): () => void;
+
+  /** Control-bar window: grow or shrink to fit what it is showing. */
+  resizeBar(height: number): void;
+  /** Open (or focus) the recordings window. */
+  openLibrary(): Promise<void>;
+  /** Close the app from the bar, which is the app's only always-present window. */
+  quitApp(): Promise<void>;
 
   revealRecording(filePath: string): Promise<void>;
   getRecordingsDir(): Promise<string>;

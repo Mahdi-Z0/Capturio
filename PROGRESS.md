@@ -63,7 +63,7 @@ _Last generated: 2026-09-23_
 
 | | Feature | Status | Shipped in | Note |
 | --- | --- | --- | --- | --- |
-| ✅ | On-screen recording indicator | Done | 05-02 | Always-on-top pill, excluded from capture (verified: 3919 px visible vs 0 protected) |
+| ✅ | Floating control bar with recording state | Done | 05-02 | The app is a floating bar: source, sound, record, timer, pause and stop. Excluded from capture |
 | ✅ | Pause and resume a recording | Done | 05-02 | MediaRecorder pause/resume; the clock excludes paused time |
 | ✅ | Mute audio mid-recording | Done | 05-02 | track.enabled=false records silence; the track is never stopped |
 

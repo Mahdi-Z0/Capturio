@@ -110,8 +110,8 @@ Protected for Plan 03-01:
 ## Session Continuity
 
 Last session: 2026-09-18
-Stopped at: 04-02 region capture built and verified in the built app
-Next action: User tries region + window recording; then only library thumbnails (02-02, parked) remain of the declared features
+Stopped at: UI rebuilt as a floating control bar (Game Bar / Snipping Tool style) at user request; region outline flicker fixed
+Next action: User tries the bar; then packaging (npm run dist has never been run: no icon, product name or installer config)
 Resume file: .paul/phases/05-playback-and-controls/05-02-SUMMARY.md
 
 **Repository:** committed at 3546d68. Phases 1 and 2 tracked; working tree clean at commit.

@@ -7,8 +7,11 @@ clicks. When a choice arises between "powerful" and "obvious", pick obvious.
 ## Status
 
 **Working:** full-screen, single-window and region capture to disk, quality presets, system (loopback) audio, the recordings
-library (browse, play, reveal, delete), crash recovery of `.part` files, seekable output, and the
-on-screen recording indicator with pause/resume and mute.
+library (browse, play, reveal, delete), crash recovery of `.part` files, seekable output, and
+pause/resume and mute while recording.
+
+The app **is** a floating control bar, not a window someone visits. Recording never requires opening
+anything.
 
 Audio: none, computer, microphone, and computer + microphone mixed, with a microphone picker.
 
@@ -284,21 +287,40 @@ memory (~750 MB for 5 minutes at 20 Mbps) and a power cut loses all of it — th
 project already suffered. WebM streams; it just needs finishing afterwards. Re-measure before
 revisiting.
 
-## The recording indicator
+## The control bar is the app
 
-A frameless always-on-top `BrowserWindow` (`showOverlay()` in `src/main/index.ts`), rendered by
-`Overlay.tsx` from the same bundle via the `#overlay` hash. The region selector (`#region`) and the
-red region outline shown while recording are two more such windows; all of them call
-`setContentProtection(true)` so none can appear in a recording.
+`Bar.tsx` (`#bar`) is the primary window: frameless, always on top, draggable, and excluded from
+capture. **It owns the recorder**, so the recordings window can be opened and closed at any time
+without touching a capture in progress. `App.tsx` is now only the recordings window, opened from the
+bar's library button, and it learns about new files over `recordings:changed` because they are saved
+by a different window.
 
-**`setContentProtection(true)` is what keeps it out of the recording** — WDA_EXCLUDEFROMCAPTURE on
-Windows 10 2004+. Verified by capturing the screen with a known colour on screen: 3919 matching
-pixels without protection, **0** with it. A recorder that films its own UI is worse than one with no
-indicator, so never remove that call.
+Ctrl+Shift+R starts and stops. The bar decides what `toggle` means, since only it knows what is
+currently selected.
 
-The overlay holds no recording state. It renders what the recorder pushes over `hud:state` and sends
-button presses back over `hud:command`, relayed through main. Keep it that way: two sources of truth
-about whether a recording is running is how a stop button ends up lying.
+**Sound is two switches, not four modes.** The speaker and microphone buttons are independent; their
+combinations are the four `AudioMode` values. Do not put a four-item list back in the UI — the modes
+exist in the contract, not on screen.
+
+**Every always-on-top window calls `setContentProtection(true)`** — the bar, the region selector and
+the region outline. WDA_EXCLUDEFROMCAPTURE on Windows 10 2004+. Verified with a known colour on
+screen: 3919 matching pixels captured without it, **0** with it. A recorder that films its own UI is
+worse than one with no indicator.
+
+**The bar window resizes to its own content.** A transparent window still swallows clicks, so a
+panel-sized window sitting over the desktop would block everything under it. `resizeBar` always sets
+`width: BAR_WIDTH` rather than feeding `getSize()` back in — the latter accumulated a pixel or two
+per resize on this 1.25-scale display (472 -> 476 after four toggles).
+
+**Windows shown while recording must be idempotent.** The recorder republishes its state four times
+a second. `showOutline` rebuilt its window on every one of those, which the user saw as a rectangle
+flickering on and off for the whole recording; it now returns early when the rect is unchanged.
+
+**Class names collide across windows — all three share one bundle.** The bar's wrapper is
+`.barShell`, not `.shell`, because the recordings window's `.shell` in `index.css` sets
+`align-items: center`, which silently centred and shrank the bar to its content (401px inside a
+472px window). Scope anything window-specific, as `.bar-mode` and `.region-mode` do for the
+transparent bodies.
 
 **Known limit.** Gradient banding (most visible in dark gradients) comes from 8-bit 4:2:0 chroma
 subsampling, which `MediaRecorder` does not let us avoid in either codec. Raising bitrate reduces

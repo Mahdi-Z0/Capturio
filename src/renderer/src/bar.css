@@ -1,0 +1,254 @@
+/*
+ * The floating control bar.
+ *
+ * Scoped to .bar-mode: all the windows share one bundle, so an unscoped
+ * transparent body would strip the recordings window's background.
+ *
+ * Shape follows the job. This sits on top of someone else's work, so it is a
+ * single low pill: dark enough to read against anything, short enough to ignore.
+ * Icons carry the meaning and words only appear when something needs saying.
+ */
+
+.bar-mode,
+.bar-mode body,
+.bar-mode #root {
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+}
+
+/*
+ * Named for this window, not "shell": the recordings window defines its own
+ * .shell in index.css with align-items:center, and both stylesheets live in one
+ * bundle. That collision quietly centred and shrank this bar to its content
+ * (401px inside a 472px window) until the class was renamed.
+ */
+.barShell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 8px 8px;
+}
+
+.bar {
+  -webkit-app-region: drag;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 48px;
+  padding: 0 8px;
+  border-radius: 14px;
+  background: rgba(20, 21, 28, 0.96);
+  border: 1px solid #383c4d;
+  /* The one shadow in the app: this element genuinely floats above other
+     windows, so it is describing a real relationship, not decorating. */
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  color: var(--ink, #f2f3f7);
+  font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+}
+
+.bar.is-recording {
+  border-color: #6b3438;
+}
+
+.bar__group {
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 6px;
+}
+
+/* Hairlines between groups: they mark where one decision ends and the next
+   begins, which is the only structure this bar needs. */
+.bar__group + .bar__group {
+  border-left: 1px solid #2f3342;
+}
+
+.bar__group--end {
+  margin-left: auto;
+  border-left: 1px solid #2f3342;
+}
+
+.icon {
+  -webkit-app-region: no-drag;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: #9aa0b5;
+  cursor: pointer;
+  transition: background-color 110ms ease, color 110ms ease;
+}
+
+.icon:hover:not(:disabled) {
+  background: #272b38;
+  color: var(--ink, #f2f3f7);
+}
+
+.icon.is-on {
+  background: #2e3446;
+  color: #cfd6ff;
+}
+
+.icon.is-off {
+  color: #6b7185;
+}
+
+.icon:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.icon:focus-visible,
+.record:focus-visible,
+.stop:focus-visible {
+  outline: 2px solid #6f8cff;
+  outline-offset: 2px;
+}
+
+.icon--quit:hover:not(:disabled) {
+  background: #3a2328;
+  color: #ff8b8b;
+}
+
+/* The one bold element. Red belongs to recording and to nothing else. */
+.record {
+  -webkit-app-region: no-drag;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  margin: 0 2px;
+  border: 1px solid #4a4f63;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  transition: border-color 110ms ease;
+}
+
+.record:hover:not(:disabled) {
+  border-color: var(--live, #ff4d4d);
+}
+
+.record:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.record__dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--live, #ff4d4d);
+}
+
+.record:disabled .record__dot {
+  background: #6b7185;
+}
+
+.stop {
+  -webkit-app-region: no-drag;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  margin-left: auto;
+  border: none;
+  border-radius: 12px;
+  background: #3a2328;
+  color: #ff6b6b;
+  cursor: pointer;
+}
+
+.stop:hover:not(:disabled) {
+  background: #4a2a30;
+}
+
+.bar__live {
+  width: 10px;
+  height: 10px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--live, #ff4d4d);
+  flex: none;
+  animation: bar-pulse 2s ease-in-out infinite;
+}
+
+.bar__live.is-paused {
+  background: var(--warn, #e0b062);
+  animation: none;
+}
+
+@keyframes bar-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar__live {
+    animation: none;
+  }
+}
+
+.bar__clock {
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.bar__what {
+  font-size: 13px;
+  color: #9aa0b5;
+}
+
+.note {
+  -webkit-app-region: drag;
+  margin: 0;
+  padding: 0 14px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: #9aa0b5;
+  font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note.is-warn {
+  color: var(--warn, #e0b062);
+  white-space: normal;
+}
+
+/* Panels hang off the bar and the window grows to fit them, so nothing
+   invisible is ever left swallowing clicks on the desktop. */
+.panel {
+  -webkit-app-region: no-drag;
+  padding: 12px 14px 14px;
+  border-radius: 14px;
+  background: rgba(20, 21, 28, 0.96);
+  border: 1px solid #383c4d;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  color: var(--ink, #f2f3f7);
+  font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.panel .picker {
+  max-width: none;
+}
+
+.panel .windows__grid {
+  max-height: 260px;
+}

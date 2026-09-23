@@ -110,12 +110,12 @@
     },
     {
       "id": "recording-indicator",
-      "name": "On-screen recording indicator",
+      "name": "Floating control bar with recording state",
       "group": "Controls",
       "weight": 3,
       "status": "done",
       "shipped": "05-02",
-      "note": "Always-on-top pill, excluded from capture (verified: 3919 px visible vs 0 protected)"
+      "note": "The app is a floating bar: source, sound, record, timer, pause and stop. Excluded from capture"
     },
     {
       "id": "pause-resume",

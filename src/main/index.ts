@@ -2,6 +2,7 @@ import {
   app,
   BrowserWindow,
   desktopCapturer,
+  globalShortcut,
   ipcMain,
   protocol,
   screen,
@@ -32,7 +33,7 @@ import {
   isAudioMode,
   isQualityPreset,
   PLAYABLE_EXTENSIONS,
-  RECORDING_SCHEME, isHudCommand, DEFAULT_MIC_DEVICE, SCREEN_TARGET, isWindowSourceId, isRegionRect,
+  RECORDING_SCHEME, DEFAULT_MIC_DEVICE, SCREEN_TARGET, isWindowSourceId, isRegionRect,
 } from '../shared/types.js';
 
 /**
@@ -623,6 +624,10 @@ function registerIpc(): void {
       }));
   });
 
+  ipcMain.handle('library:open', (): void => openLibrary());
+
+  ipcMain.handle('app:quit', (): void => app.quit());
+
   ipcMain.handle('region:select', (): Promise<RegionRect | null> => selectRegion());
 
   ipcMain.handle('capture:set-target', (_e, target: unknown): void => {
@@ -942,8 +947,25 @@ function selectRegion(): Promise<RegionRect | null> {
  * appearing in the file or blocking the work underneath. Drawn just outside the
  * region, or it would cover the edge pixels it is describing.
  */
+let outlineRect: RegionRect | null = null;
+
 function showOutline(rect: RegionRect): void {
+  // Idempotent on purpose. The recorder republishes its state four times a
+  // second, and an earlier version rebuilt this window on every one of them --
+  // which read as a rectangle flickering on and off for the whole recording.
+  if (
+    outlineWindow &&
+    !outlineWindow.isDestroyed() &&
+    outlineRect &&
+    outlineRect.x === rect.x &&
+    outlineRect.y === rect.y &&
+    outlineRect.width === rect.width &&
+    outlineRect.height === rect.height
+  ) {
+    return;
+  }
   hideOutline();
+  outlineRect = { ...rect };
   const { bounds } = screen.getPrimaryDisplay();
   const pad = 2;
   const win = new BrowserWindow({
@@ -979,120 +1001,121 @@ function showOutline(rect: RegionRect): void {
 function hideOutline(): void {
   if (outlineWindow && !outlineWindow.isDestroyed()) outlineWindow.close();
   outlineWindow = null;
+  outlineRect = null;
 }
 
-/* ------------------------------------------------------------------ overlay */
+/* ---------------------------------------------------------------------- bar */
 
-let overlayWindow: BrowserWindow | null = null;
-let mainWindow: BrowserWindow | null = null;
+let barWindow: BrowserWindow | null = null;
+let libraryWindow: BrowserWindow | null = null;
 
-const OVERLAY_WIDTH = 232;
-const OVERLAY_HEIGHT = 56;
+const BAR_WIDTH = 468;
+const BAR_HEIGHT = 64;
 
 /**
- * The on-screen recording indicator.
+ * The control bar: the app's primary window.
  *
- * Frameless, always on top, and -- the part that matters -- excluded from screen
- * capture via `setContentProtection(true)`, which maps to WDA_EXCLUDEFROMCAPTURE
- * on Windows 10 2004+. Without it the indicator would appear in every recording
- * it is meant to describe, and a recorder that films its own UI is worse than one
- * with no indicator at all.
+ * Frameless and always on top, because the thing being recorded is someone
+ * else's work and this has to sit over it without becoming a destination. It
+ * holds the recorder, so the recordings window can be opened and closed at any
+ * time without disturbing a capture.
  *
- * Created on demand and destroyed when recording ends: an always-present window
- * would sit in front of the user's work for no reason.
+ * Excluded from capture like the region outline, so the bar never films itself.
  */
-function showOverlay(): void {
-  if (overlayWindow && !overlayWindow.isDestroyed()) {
-    overlayWindow.showInactive();
+function createBar(): void {
+  if (barWindow && !barWindow.isDestroyed()) {
+    barWindow.show();
+    barWindow.focus();
     return;
   }
 
   const { workArea } = screen.getPrimaryDisplay();
-  overlayWindow = new BrowserWindow({
-    width: OVERLAY_WIDTH,
-    height: OVERLAY_HEIGHT,
-    // Bottom centre: out of the way of window chrome and the tray, and the one
-    // region people rarely put the thing they are recording.
-    x: Math.round(workArea.x + (workArea.width - OVERLAY_WIDTH) / 2),
-    y: Math.round(workArea.y + workArea.height - OVERLAY_HEIGHT - 48),
+  const win = new BrowserWindow({
+    width: BAR_WIDTH,
+    height: BAR_HEIGHT,
+    x: Math.round(workArea.x + (workArea.width - BAR_WIDTH) / 2),
+    y: Math.round(workArea.y + workArea.height - BAR_HEIGHT - 56),
     frame: false,
     transparent: true,
     resizable: false,
-    movable: true,
-    minimizable: false,
     maximizable: false,
     fullscreenable: false,
-    skipTaskbar: true,
     alwaysOnTop: true,
     show: false,
     hasShadow: false,
     backgroundColor: '#00000000',
+    title: 'ScreenRecorder',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      backgroundThrottling: false,
     },
   });
+  barWindow = win;
+  win.setAlwaysOnTop(true, 'screen-saver');
+  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  win.setContentProtection(true);
 
-  // Above full-screen apps too, or it vanishes exactly when someone is recording
-  // a game or a presentation.
-  overlayWindow.setAlwaysOnTop(true, 'screen-saver');
-  overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  overlayWindow.setContentProtection(true);
-
-  overlayWindow.on('closed', () => {
-    overlayWindow = null;
+  win.on('closed', () => {
+    barWindow = null;
+    hideOutline();
   });
 
   const url = process.env['ELECTRON_RENDERER_URL'];
-  if (url) {
-    void overlayWindow.loadURL(`${url}#overlay`);
-  } else {
-    void overlayWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: 'overlay' });
-  }
+  if (url) void win.loadURL(`${url}#bar`);
+  else void win.loadFile(join(__dirname, '../renderer/index.html'), { hash: 'bar' });
 
-  // showInactive: taking focus mid-recording would pull the user out of whatever
-  // they are recording.
-  overlayWindow.once('ready-to-show', () => overlayWindow?.showInactive());
+  win.once('ready-to-show', () => win.show());
 }
 
-function hideOverlay(): void {
-  if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.close();
-  overlayWindow = null;
+/** Grow and shrink with the bar's own content; a taller window would swallow
+ * clicks on the desktop through its transparent area. */
+function resizeBar(height: number): void {
+  if (!barWindow || barWindow.isDestroyed()) return;
+  const clamped = Math.max(BAR_HEIGHT, Math.min(Math.round(height), 720));
+  const [, h] = barWindow.getSize();
+  if (h === clamped) return;
+  const bounds = barWindow.getBounds();
+  // Grows downward from where it sits, unless that would run off the work area,
+  // in which case it grows up instead -- the bar normally lives near the bottom.
+  const { workArea } = screen.getPrimaryDisplay();
+  const overflow = bounds.y + clamped - (workArea.y + workArea.height);
+  barWindow.setBounds({
+    x: bounds.x,
+    y: overflow > 0 ? Math.max(workArea.y, bounds.y - overflow) : bounds.y,
+    // The constant, never the current size: feeding getSize() back in accumulates
+    // a pixel or two per resize on a fractional-scale display (472 -> 476 after
+    // four panel toggles).
+    width: BAR_WIDTH,
+    height: clamped,
+  });
 }
 
 function registerHudRelay(): void {
-  // Recorder -> overlay. Also owns the overlay's lifetime: the recorder is the
-  // only thing that knows whether a recording exists.
+  // The recorder publishes its state; main only needs it to keep the region
+  // outline in step with the recording.
   ipcMain.on('hud:state', (_e, state: HudState) => {
-    if (state?.recording) {
-      showOverlay();
-      if (captureTarget.kind === 'region') showOutline(captureTarget.rect);
-    } else {
-      hideOverlay();
-      hideOutline();
-    }
-    if (overlayWindow && !overlayWindow.isDestroyed()) {
-      overlayWindow.webContents.send('hud:state', state);
+    if (state?.recording && captureTarget.kind === 'region') showOutline(captureTarget.rect);
+    else hideOutline();
+  });
+
+  // Relayed, because the recorder and the recordings list live in different
+  // windows now.
+  ipcMain.on('recordings:changed', (_e, filePath: unknown) => {
+    if (libraryWindow && !libraryWindow.isDestroyed() && typeof filePath === 'string') {
+      libraryWindow.webContents.send('recordings:changed', filePath);
     }
   });
 
-  // Overlay -> recorder. Validated here rather than trusted: this crosses a
-  // window boundary, and the recorder acts on whatever arrives.
-  ipcMain.on('hud:command', (_e, command: unknown) => {
-    if (!isHudCommand(command)) {
-      console.error('[hud] ignoring unknown command:', command);
-      return;
-    }
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('hud:command', command);
-    }
+  ipcMain.on('bar:resize', (_e, height: unknown) => {
+    if (typeof height === 'number' && Number.isFinite(height)) resizeBar(height);
   });
 }
 
 
-function createWindow(): void {
+function createLibraryWindow(): void {
   const win = new BrowserWindow({
     width: 1100,
     height: 720,
@@ -1109,14 +1132,12 @@ function createWindow(): void {
     },
   });
 
-  mainWindow = win;
+  libraryWindow = win;
   win.on('ready-to-show', () => win.show());
-  // The indicator describes a recording owned by this window. If the window goes,
-  // nothing is recording, and a stranded always-on-top pill would be unkillable.
+  // Closing the recordings window is not closing the app: the bar owns the
+  // recorder, and a capture in progress must survive this window going away.
   win.on('closed', () => {
-    mainWindow = null;
-    hideOverlay();
-    hideOutline();
+    libraryWindow = null;
   });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -1131,6 +1152,15 @@ function createWindow(): void {
   }
 }
 
+function openLibrary(): void {
+  if (libraryWindow && !libraryWindow.isDestroyed()) {
+    if (libraryWindow.isMinimized()) libraryWindow.restore();
+    libraryWindow.focus();
+    return;
+  }
+  createLibraryWindow();
+}
+
 app.whenReady().then(() => {
   registerDisplayMediaHandler();
   registerRecordingProtocol();
@@ -1138,11 +1168,19 @@ app.whenReady().then(() => {
   registerHudRelay();
   // Reclaim anything a previous crash left behind, before a new recording starts.
   void recoverOrphanedParts();
-  createWindow();
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  createBar();
+
+  // Start and stop without reaching for the bar, which is the point of a hotkey
+  // on a recorder: the moment worth capturing rarely waits.
+  const registered = globalShortcut.register('Control+Shift+R', () => {
+    if (barWindow && !barWindow.isDestroyed()) barWindow.webContents.send('hud:command', 'toggle');
   });
+  if (!registered) console.error('[shortcut] Ctrl+Shift+R is taken; the bar still works');
+
+  app.on('activate', () => createBar());
 });
+
+app.on('will-quit', () => globalShortcut.unregisterAll());
 
 /**
  * Closing the window mid-recording must not silently throw away what was captured.

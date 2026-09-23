@@ -715,3 +715,10 @@ body {
   color: var(--ink-dim);
   font-variant-numeric: tabular-nums;
 }
+
+/* The recordings window has one job, so it needs no stage or controls. */
+.shell--library {
+  justify-content: flex-start;
+  padding-top: 20px;
+  gap: 14px;
+}

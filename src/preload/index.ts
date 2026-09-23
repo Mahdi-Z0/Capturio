@@ -57,6 +57,21 @@ const api = {
   openRecordingExternally: (filePath: string): Promise<void> =>
     ipcRenderer.invoke('recordings:open-external', filePath),
 
+  announceRecording: (filePath: string): void => {
+    ipcRenderer.send('recordings:changed', filePath);
+  },
+  onRecordingsChanged: (handler: (filePath: string) => void): (() => void) => {
+    const listener = (_e: unknown, filePath: string): void => handler(filePath);
+    ipcRenderer.on('recordings:changed', listener);
+    return () => ipcRenderer.removeListener('recordings:changed', listener);
+  },
+
+  resizeBar: (height: number): void => {
+    ipcRenderer.send('bar:resize', height);
+  },
+  openLibrary: (): Promise<void> => ipcRenderer.invoke('library:open'),
+  quitApp: (): Promise<void> => ipcRenderer.invoke('app:quit'),
+
   revealRecording: (filePath: string): Promise<void> =>
     ipcRenderer.invoke('recordings:reveal', filePath),
   getRecordingsDir: (): Promise<string> => ipcRenderer.invoke('recordings:dir'),
