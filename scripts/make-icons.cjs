@@ -114,6 +114,38 @@ function encodePng(size, rgba) {
   ]);
 }
 
+/**
+ * Pack PNGs into a Windows .ico.
+ *
+ * An .ico is a container of several sizes; Windows picks per context — 16 in a
+ * title bar, 32 in the taskbar, 256 in a large Explorer view. Handing it one
+ * size means Windows scales, and a scaled icon is the first thing that makes an
+ * app look unfinished. Windows Vista and newer read PNG payloads directly.
+ */
+function encodeIco(images) {
+  const header = Buffer.alloc(6);
+  header.writeUInt16LE(0, 0); // reserved
+  header.writeUInt16LE(1, 2); // 1 = icon
+  header.writeUInt16LE(images.length, 4);
+
+  const entries = [];
+  let offset = 6 + images.length * 16;
+  for (const { size, png } of images) {
+    const e = Buffer.alloc(16);
+    e[0] = size >= 256 ? 0 : size; // 0 means 256
+    e[1] = size >= 256 ? 0 : size;
+    e[2] = 0; // palette
+    e[3] = 0; // reserved
+    e.writeUInt16LE(1, 4); // colour planes
+    e.writeUInt16LE(32, 6); // bits per pixel
+    e.writeUInt32LE(png.length, 8);
+    e.writeUInt32LE(offset, 12);
+    entries.push(e);
+    offset += png.length;
+  }
+  return Buffer.concat([header, ...entries, ...images.map((i) => i.png)]);
+}
+
 const outDir = path.join(__dirname, '..', 'resources');
 fs.mkdirSync(outDir, { recursive: true });
 
@@ -131,5 +163,18 @@ for (const size of [256, 512]) {
   fs.writeFileSync(file, encodePng(size, drawMark(size, { plate: true })));
   written.push(path.basename(file));
 }
+
+// Windows installer and executable icon.
+const ico = path.join(outDir, 'icon.ico');
+fs.writeFileSync(
+  ico,
+  encodeIco(
+    [16, 24, 32, 48, 64, 128, 256].map((size) => ({
+      size,
+      png: encodePng(size, drawMark(size, { plate: true })),
+    })),
+  ),
+);
+written.push(path.basename(ico));
 
 console.log(`resources/: ${written.join(', ')}`);

@@ -91,7 +91,7 @@ percentage deliberately — otherwise plumbing inflates the number while the pro
 | ✅ | Primary-display correlation (multi-monitor correct) | 01-01 |
 | ✅ | Capture benchmark with jitter measurement | 01-02 |
 | ✅ | Interrupted-recording recovery | 01-02 |
-| ⬜ | Packaging / installer | — |
+| ⬜ | Packaging / installer | 2026-09-25 |
 | ⬜ | Persisted error log | — |
 
 ---

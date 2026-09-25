@@ -1,0 +1,46 @@
+# Packaging for Capturio.
+#
+# One target: a normal Windows installer. An MSIX for the Microsoft Store comes
+# later and needs a publisher identity from Partner Center, which is an account
+# matter rather than a build one.
+appId: com.mahdiz0.capturio
+productName: Capturio
+copyright: Copyright (c) 2026 Mahdi-Z0. All rights reserved.
+
+directories:
+  output: release
+  buildResources: resources
+
+# Only the built output and the manifest. Source, tests and .paul notes are not
+# part of what gets installed.
+files:
+  - out/**
+  - package.json
+
+# The tray icon is read from disk at runtime, so it must sit outside the asar
+# archive. Without this the tray is blank in an installed build and fine in
+# development, which is the worst way to find out.
+extraResources:
+  - from: resources
+    to: .
+    filter:
+      - '*.png'
+
+win:
+  icon: resources/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+
+nsis:
+  # Not one-click: an installer that starts working before saying where it will
+  # put things is the kind people distrust.
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Capturio
+  artifactName: ${productName}-Setup-${version}.${ext}
+  uninstallDisplayName: Capturio

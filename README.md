@@ -47,7 +47,18 @@ npm run dev
 Run it from PowerShell or Windows Terminal rather than VS Code's built-in terminal — VS Code sets a
 variable that makes Electron start as plain Node. `CLAUDE.md` explains the symptom if you hit it.
 
-There is no installer yet; `npm run dist` is wired but has never been run.
+### Installing it
+
+```bash
+npm run dist
+```
+
+This produces `release/Capturio-Setup-0.1.0.exe`, a normal Windows installer that puts Capturio in
+your user profile and adds Start menu and desktop shortcuts — no administrator rights needed.
+
+The installer is **not code-signed**, so Windows SmartScreen will warn the first time you run it
+("Windows protected your PC" → More info → Run anyway). Signing needs a certificate, and the
+Microsoft Store handles signing itself.
 
 ## How it works, where it is not obvious
 
@@ -107,6 +118,6 @@ Built with Electron, React and TypeScript. No runtime dependencies beyond those.
 
 ## Status
 
-Everything listed above works and is verified by driving the built app, not only by tests. What is
-missing is packaging: there is no installer, and the Microsoft Store submission it is heading for
-needs one.
+Everything listed above works, verified by driving the built and installed app rather than by tests
+alone. The installer works; what remains for the Microsoft Store is an MSIX package and a publisher
+identity, which is an account matter rather than a build one.

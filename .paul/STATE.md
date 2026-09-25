@@ -110,8 +110,8 @@ Protected for Plan 03-01:
 ## Session Continuity
 
 Last session: 2026-09-18
-Stopped at: renamed to Capturio (settings and recordings carried over); README written
-Next action: packaging — electron-builder config, icon, first npm run dist, then install and verify outside the dev environment
+Stopped at: packaged and installed. Capturio-Setup-0.1.0.exe built, installed per-user, and verified: records, saves, seeks, thumbnails, tray, log
+Next action: user tries the installed app; then MSIX for the Store (needs a Partner Center publisher identity)
 Resume file: .paul/phases/05-playback-and-controls/05-02-SUMMARY.md
 
 **Repository:** committed at 3546d68. Phases 1 and 2 tracked; working tree clean at commit.

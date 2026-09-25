@@ -41,6 +41,7 @@ the language server still starts.
 | Format        | `npm run format`     |
 | Production    | `npm run build`      |
 | Installer     | `npm run dist`       |
+| App icons     | `npm run icons`      |
 | Store package | `npm run dist:store` |
 | Verify all    | `npm run verify` |
 | Verify guards | `npm run verify:guards` |
@@ -361,6 +362,23 @@ transparent bodies.
 **Known limit.** Gradient banding (most visible in dark gradients) comes from 8-bit 4:2:0 chroma
 subsampling, which `MediaRecorder` does not let us avoid in either codec. Raising bitrate reduces
 but does not eliminate it. Fixing it properly needs a different capture/encode path.
+
+## Packaging
+
+`npm run dist` builds `release/Capturio-Setup-<version>.exe` with electron-builder
+(`electron-builder.yml`). Per-user NSIS install, no elevation.
+
+**Icons are generated, never committed as opaque binaries.** `npm run icons` draws the mark as maths
+and writes the tray PNGs, the app PNGs and a **multi-size `icon.ico`** (16 → 256). Windows picks a
+size per context, and handing it one size means Windows scales — the first thing that makes an app
+look unfinished.
+
+**Tray icons must stay outside the asar.** They are read from `process.resourcesPath` at runtime, so
+`extraResources` copies them; without that the tray is blank in an installed build and fine in
+development, which is the worst way to find out.
+
+The installer is unsigned, so SmartScreen warns on first run. Signing needs a certificate; the Store
+signs its own packages, so this only matters for direct distribution.
 
 ## Out of scope
 

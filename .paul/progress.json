@@ -169,7 +169,9 @@
     },
     {
       "name": "Packaging / installer",
-      "status": "todo"
+      "status": "todo",
+      "done": true,
+      "shipped": "2026-09-25"
     },
     {
       "name": "Persisted error log",
