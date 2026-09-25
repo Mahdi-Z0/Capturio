@@ -1,8 +1,13 @@
-# ScreenRecorder
+# Capturio
 
-A simple Windows screen recorder for personal use, possibly shipped to the Microsoft Store.
+Capturio — a simple Windows screen recorder for personal use, heading for the Microsoft Store.
 Design goal: **minimal surface, complete basics.** Every feature must be reachable in one or two
 clicks. When a choice arises between "powerful" and "obvious", pick obvious.
+
+**The app is named Capturio.** `productName` drives `userData`, so the settings folder is
+`AppData/Roaming/Capturio`; `migrateSettingsFromOldName()` copies settings once from the former
+`screenrecorder` folder. Recordings go to `Videos/Capturio`, **except** when that folder does not
+exist and `Videos/ScreenRecorder` does — renaming the app must never orphan recordings already made.
 
 ## Status
 

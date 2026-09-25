@@ -110,8 +110,8 @@ Protected for Plan 03-01:
 ## Session Continuity
 
 Last session: 2026-09-18
-Stopped at: tray, log, free-space, thumbnails shipped; AC-6 memory evidence finally captured
-Next action: rename to Capturio, README, then packaging (npm run dist has never been run)
+Stopped at: renamed to Capturio (settings and recordings carried over); README written
+Next action: packaging — electron-builder config, icon, first npm run dist, then install and verify outside the dev environment
 Resume file: .paul/phases/05-playback-and-controls/05-02-SUMMARY.md
 
 **Repository:** committed at 3546d68. Phases 1 and 2 tracked; working tree clean at commit.

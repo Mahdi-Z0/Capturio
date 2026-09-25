@@ -83,7 +83,7 @@ function resolveRecordingRequest(requestUrl, recordingsDir) {
   const root = path.resolve(recordingsDir) + path.sep;
   if (!filePath.startsWith(root)) {
     // Separator-aware: a bare startsWith on the directory string would also
-    // accept a sibling such as ...\ScreenRecorder-elsewhere\x.webm.
+    // accept a sibling such as ...\Capturio-elsewhere\x.webm.
     return { ok: false, reason: 'resolves outside the recordings folder' };
   }
 

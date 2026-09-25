@@ -1,8 +1,8 @@
 {
-  "name": "screenrecorder",
+  "name": "capturio",
   "version": "0.1.0",
   "private": true,
-  "description": "Simple, complete Windows screen recorder",
+  "description": "Capturio \u2014 a simple Windows screen recorder",
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
@@ -42,5 +42,6 @@
     "typescript": "5.9.3",
     "typescript-eslint": "^8.70.0",
     "vite": "^7.1.0"
-  }
+  },
+  "productName": "Capturio"
 }

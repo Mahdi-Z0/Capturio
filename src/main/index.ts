@@ -12,7 +12,7 @@ import {
   shell,
   Tray,
 } from 'electron';
-import { createWriteStream, mkdirSync, type WriteStream } from 'node:fs';
+import { copyFileSync, createWriteStream, existsSync, mkdirSync, type WriteStream } from 'node:fs';
 import {
   stat,
   statfs,
@@ -23,7 +23,7 @@ import {
   readFile,
   writeFile,
 } from 'node:fs/promises';
-import { join, resolve, sep, extname } from 'node:path';
+import { dirname, join, resolve, sep, extname } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { resolveRecordingRequest } from './recordingPath.cjs';
 import { createRangeResponse } from './byteRange.cjs';
@@ -84,7 +84,12 @@ let recordingsDir: string | null = null;
 
 function getRecordingsDir(): string {
   if (!recordingsDir) {
-    recordingsDir = join(app.getPath('videos'), 'ScreenRecorder');
+    const preferred = join(app.getPath('videos'), 'Capturio');
+    // Renaming the app must not orphan recordings already made: if the new
+    // folder does not exist yet but the old one does, keep using the old one.
+    // Rename it in Explorer and this picks the new one up on the next launch.
+    const legacy = join(app.getPath('videos'), 'ScreenRecorder');
+    recordingsDir = !existsSync(preferred) && existsSync(legacy) ? legacy : preferred;
     mkdirSync(recordingsDir, { recursive: true });
   }
   return recordingsDir;
@@ -310,6 +315,28 @@ const isMicDevice = (v: unknown): v is string => typeof v === 'string' && v.leng
 const settingsPath = (): string => join(app.getPath('userData'), 'settings.json');
 
 /**
+ * Carry settings across the rename.
+ *
+ * `userData` is derived from the app name, so becoming Capturio moves it from
+ * `.../screenrecorder` to `.../Capturio` and the stored quality, sound and
+ * microphone choices would silently read as defaults. Copies the old file once,
+ * and only when there is nothing at the new location to overwrite.
+ */
+function migrateSettingsFromOldName(): void {
+  const current = settingsPath();
+  if (existsSync(current)) return;
+  const old = join(app.getPath('appData'), 'screenrecorder', 'settings.json');
+  if (!existsSync(old)) return;
+  try {
+    mkdirSync(dirname(current), { recursive: true });
+    copyFileSync(old, current);
+    console.log('[settings] carried settings over from the previous app name');
+  } catch (err) {
+    console.error('[settings] could not carry settings over:', err);
+  }
+}
+
+/**
  * Serializes writes.
  *
  * Clicking through presets quickly fires overlapping writes. Sharing one temp
@@ -491,7 +518,7 @@ function reportMemory(): void {
  * way they stay consistent as that number grows.
  *
  * Separator-aware: a bare startsWith on the directory string would also accept a
- * sibling such as ...\ScreenRecorder-elsewhere\x.mp4.
+ * sibling such as ...\Capturio-elsewhere\x.mp4.
  */
 function resolveInsideRecordings(channel: string, filePath: unknown): string {
   if (typeof filePath !== 'string' || filePath.length === 0) {
@@ -1275,7 +1302,7 @@ function createTray(): void {
     buffer: nativeImage.createFromPath(resourcePath('tray-32.png')).toPNG(),
   });
   tray = new Tray(image);
-  tray.setToolTip('ScreenRecorder');
+  tray.setToolTip('Capturio');
 
   trayRefresh = (): void => {
     tray?.setContextMenu(
@@ -1293,7 +1320,7 @@ function createTray(): void {
         { type: 'separator' },
         { label: 'Recordings', click: () => openLibrary() },
         { type: 'separator' },
-        { label: 'Quit ScreenRecorder', click: () => app.quit() },
+        { label: 'Quit Capturio', click: () => app.quit() },
       ]),
     );
   };
@@ -1343,7 +1370,7 @@ function createBar(): void {
     show: false,
     hasShadow: false,
     backgroundColor: '#00000000',
-    title: 'ScreenRecorder',
+    title: 'Capturio',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -1476,6 +1503,7 @@ function openLibrary(): void {
 log.start(join(app.getPath('userData'), 'logs'));
 
 app.whenReady().then(() => {
+  migrateSettingsFromOldName();
   registerDisplayMediaHandler();
   registerRecordingProtocol();
   registerIpc();
