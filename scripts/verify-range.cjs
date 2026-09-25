@@ -11,7 +11,7 @@
  * `seekable.end(0)` was 0 and every seek landed back at zero.
  */
 
-const { parseRange } = require('../src/main/byteRange.cjs');
+const { parseRange, createRangeResponse } = require('../src/main/byteRange.cjs');
 
 const SIZE = 1000;
 let failures = 0;
@@ -75,6 +75,37 @@ const whole = parseRange('bytes=0-', SIZE);
 const length = whole.kind === 'partial' ? whole.end - whole.start + 1 : -1;
 if (length !== SIZE) failures++;
 console.log(`  ${length === SIZE ? 'ok   ' : 'FAIL '} bytes=0- covers all ${SIZE} bytes (got ${length})`);
+
+console.log('\nResponse headers:');
+{
+  const fsx = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const dir = fsx.mkdtempSync(path.join(os.tmpdir(), 'range-'));
+  const file = path.join(dir, 'x.webm');
+  fsx.writeFileSync(file, Buffer.alloc(SIZE, 7));
+
+  const whole = createRangeResponse(null, file, SIZE, 'video/webm');
+  const partial = createRangeResponse('bytes=10-19', file, SIZE, 'video/webm');
+  const checks = [
+    ['whole response is 200 and advertises ranges',
+      whole.status === 200 && whole.headers.get('accept-ranges') === 'bytes'],
+    ['partial response is 206', partial.status === 206],
+    ['partial names its range', partial.headers.get('content-range') === 'bytes 10-19/' + SIZE],
+    ['partial length is the slice', partial.headers.get('content-length') === '10'],
+    // Without this the library cannot draw a frame into a canvas: the source is
+    // cross-origin, the canvas is tainted, and toBlob throws. Thumbnails failed
+    // silently until this header was added (2026-09-25).
+    ['both allow reading, for thumbnails',
+      whole.headers.get('access-control-allow-origin') === '*' &&
+        partial.headers.get('access-control-allow-origin') === '*'],
+  ];
+  for (const [label, ok] of checks) {
+    if (!ok) failures++;
+    console.log('  ' + (ok ? 'ok   ' : 'FAIL ') + label);
+  }
+  fsx.rmSync(dir, { recursive: true, force: true });
+}
 
 console.log(
   failures === 0

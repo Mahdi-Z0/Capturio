@@ -62,8 +62,8 @@ PLAN ──▶ APPLY ──▶ UNIFY
 | ---------------------------------------- | ------ | ------ | ------------------------------ |
 | Container choice (mp4/avc1 vs webm/vp9)   | Init   | S      | During v0.1 — affects save path |
 | Region-capture crop strategy              | Init   | M      | When region phase begins        |
-| Persisted log file (console-only today)   | Audit  | S      | Before any non-personal release |
-| Free-space pre-check before recording     | Audit  | S      | UX polish phase                 |
+| ~~Persisted log file~~ — **shipped 2026-09-25** (userData/logs/app.log) | Audit | S | Done |
+| ~~Free-space pre-check~~ — **shipped 2026-09-25** (warns at 2 GB, refuses at 300 MB) | Audit | S | Done |
 | Pin container format for Store builds     | Audit  | S      | If/when MS Store is pursued     |
 
 ### Blockers/Concerns
@@ -82,7 +82,7 @@ PLAN ──▶ APPLY ──▶ UNIFY
 | Finalize fallback is unexercised | If `finalizeWebm` throws, the recording should still land by plain rename — correct by construction, never forced | A dev-only `__sim` hook, as was done for AC-5/AC-7 |
 | `frontend-design` was not invocable in a resumed session | A plan marked it **blocking** | Guidance read from the installed plugin on disk instead. If a future plan blocks on a skill, check it resolves before APPLY |
 | ~~Window capture measures 1.1 fps~~ — **benchmark bug, fixed 2026-09-22**: 58.7 fps on an animated window | **Blocks Phase 4** (window/region), which was reordered behind audio | A native Windows Graphics Capture module is the likely unblock — much larger than any phase so far |
-| 02-02 thumbnails parked 2026-09-18 | Adds 0 feature points; browse was already counted in 02-01 | Plan and audit remain valid; tile placeholders already sized, so resuming causes no relayout |
+| ~~02-02 thumbnails parked~~ — **shipped 2026-09-25** | Adds 0 feature points; browse was already counted in 02-01 | Plan and audit remain valid; tile placeholders already sized, so resuming causes no relayout |
 | Ceremony reduced by request | Audit skipped for plans that do not touch data safety or security | 03-01 adds no delete path and no new CSP source, so the audit's usual targets are absent |
 | ~~Full-screen capture at ~12 fps~~ — **cleared by a reboot 2026-09-23** (48 fps) | Real recordings affected (measured 13 frames/s on playback); region capture would inherit it | OS state: DXGI duplication fails on both adapters, WGC monitor capture starved. Not app code. Reboot, then re-measure |
 | Gradient banding root cause is 8-bit 4:2:0 chroma, which MediaRecorder cannot avoid | May persist despite higher bitrate | Needs a different capture path if it matters |
@@ -110,8 +110,8 @@ Protected for Plan 03-01:
 ## Session Continuity
 
 Last session: 2026-09-18
-Stopped at: UI rebuilt as a floating control bar (Game Bar / Snipping Tool style) at user request; region outline flicker fixed
-Next action: User tries the bar; then packaging (npm run dist has never been run: no icon, product name or installer config)
+Stopped at: tray icon, persisted log, free-space check and thumbnails (02-02) all shipped
+Next action: rename to Capturio, README, then packaging (npm run dist has never been run)
 Resume file: .paul/phases/05-playback-and-controls/05-02-SUMMARY.md
 
 **Repository:** committed at 3546d68. Phases 1 and 2 tracked; working tree clean at commit.

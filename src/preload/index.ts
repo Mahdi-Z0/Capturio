@@ -70,6 +70,11 @@ const api = {
     ipcRenderer.send('bar:resize', height);
   },
   openLibrary: (): Promise<void> => ipcRenderer.invoke('library:open'),
+  getThumbnail: (filePath: string): Promise<string | null> =>
+    ipcRenderer.invoke('thumbs:get', filePath),
+  putThumbnail: (filePath: string, jpeg: ArrayBuffer): Promise<void> =>
+    ipcRenderer.invoke('thumbs:put', filePath, jpeg),
+
   getFreeSpace: (): Promise<number | null> => ipcRenderer.invoke('recordings:free-space'),
 
   reportProblem: (level: 'error' | 'warn', message: string): void => {

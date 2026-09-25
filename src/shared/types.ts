@@ -323,6 +323,11 @@ export interface RecorderApi {
   resizeBar(height: number): void;
   /** Open (or focus) the recordings window. */
   openLibrary(): Promise<void>;
+  /** Cached tile image as a data: URL, or null when there is none yet. */
+  getThumbnail(filePath: string): Promise<string | null>;
+  /** Store a tile image. Rejects anything that is not a small JPEG. */
+  putThumbnail(filePath: string, jpeg: ArrayBuffer): Promise<void>;
+
   /** Free bytes where recordings are saved, or null if unknown. */
   getFreeSpace(): Promise<number | null>;
 

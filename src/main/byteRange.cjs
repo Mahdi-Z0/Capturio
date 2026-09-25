@@ -69,6 +69,19 @@ function parseRange(header, size) {
 }
 
 /**
+ * Let the app's own pages READ these bytes, not merely play them.
+ *
+ * `recording:` is a different origin from the app page, so a <video> drawn into
+ * a canvas taints it and `toBlob` throws -- which is why thumbnails silently
+ * produced nothing. The scheme is registered by this app alone and is not
+ * reachable from a browser or another program, so declaring it readable grants
+ * nothing that playing the file did not already.
+ *
+ * Elements that need this must also set `crossOrigin = 'anonymous'`.
+ */
+const CORS = { 'Access-Control-Allow-Origin': '*' };
+
+/**
  * Build the response for a recording request, honouring `Range`.
  *
  * Lives here rather than in index.ts so the verifier and the shipped protocol
@@ -96,6 +109,7 @@ function createRangeResponse(rangeHeader, filePath, size, contentType) {
         'Content-Type': contentType,
         'Content-Length': String(size),
         'Accept-Ranges': 'bytes',
+        ...CORS,
       },
     });
   }
@@ -108,6 +122,7 @@ function createRangeResponse(rangeHeader, filePath, size, contentType) {
       'Content-Length': String(end - start + 1),
       'Content-Range': `bytes ${start}-${end}/${size}`,
       'Accept-Ranges': 'bytes',
+      ...CORS,
     },
   });
 }

@@ -15,7 +15,7 @@ anything.
 
 Audio: none, computer, microphone, and computer + microphone mixed, with a microphone picker.
 
-**Not built:** library thumbnails. Do not describe these as working.
+Everything in the declared feature set is built.
 
 ## Stack
 
@@ -286,6 +286,31 @@ Chromium's MP4 muxer emits nothing until the recording stops, so the whole file 
 memory (~750 MB for 5 minutes at 20 Mbps) and a power cut loses all of it — the exact failure this
 project already suffered. WebM streams; it just needs finishing afterwards. Re-measure before
 revisiting.
+
+## Thumbnails, and why the protocol allows reading
+
+Tile images are cached under `userData/thumbnails`, keyed by name + size + mtime, so replacing a
+file can never show its predecessor's picture. The cache is **disposable**: nothing but tile display
+may read it, and deleting the directory must leave listing, playback, duration and delete working.
+It is capped at 64 MB, pruned at startup, and `thumbs:put` refuses anything that is not a JPEG
+(`FF D8 FF` … `FF D9`), over 256 KB, or outside the recordings folder — those bytes come from the
+renderer and are written into the user's profile.
+
+Frames are taken from the probe the library already opens to read a duration, so a tile costs one
+decode, not two.
+
+**Two things had to be true before a frame could be captured at all**, and both failed silently:
+
+1. The scheme must be registered with **`corsEnabled: true`**. Without it a CORS request to a custom
+   scheme is rejected outright, which appeared as the probe failing to load with
+   `MEDIA_ELEMENT_ERROR: Format error` the moment it set `crossOrigin`.
+2. The protocol must answer with **`Access-Control-Allow-Origin`** (`byteRange.cjs`), and the element
+   must set `crossOrigin = 'anonymous'`. `recording:` is a different origin from the app page, so
+   without this the canvas is tainted and `toBlob` returns null — no error, no image.
+
+`npm run verify:range` asserts the header on both the whole-file and partial responses. This is the
+same cross-origin rule that makes Web Audio read silence from `recording:` media; see the audio
+section.
 
 ## The control bar is the app
 

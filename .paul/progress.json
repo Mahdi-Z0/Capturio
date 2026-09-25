@@ -87,8 +87,8 @@
       "group": "Files",
       "weight": 4,
       "status": "done",
-      "shipped": "02-01, 05-01",
-      "note": "3 most recent shown, expandable; inline playback now seekable, plus open-in-default-player"
+      "shipped": "02-01, 05-01, 02-02",
+      "note": "3 most recent shown, expandable; thumbnails, seekable inline playback, open in default player"
     },
     {
       "id": "library-delete",

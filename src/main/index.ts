@@ -24,7 +24,7 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { join, resolve, sep, extname } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { resolveRecordingRequest } from './recordingPath.cjs';
 import { createRangeResponse } from './byteRange.cjs';
 import { finalizeWebm } from './webmFinalize.cjs';
@@ -61,7 +61,16 @@ import {
 protocol.registerSchemesAsPrivileged([
   {
     scheme: RECORDING_SCHEME,
-    privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true },
+    // corsEnabled: a CORS request to a custom scheme is rejected outright
+    // without it, which showed up as the library's thumbnail probe failing to
+    // load at all ("Format error") the moment it set crossOrigin.
+    privileges: {
+      standard: true,
+      secure: true,
+      stream: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+    },
   },
 ]);
 
@@ -758,6 +767,48 @@ function registerIpc(): void {
 
   ipcMain.handle('recordings:free-space', (): Promise<number | null> => freeSpaceBytes());
 
+  ipcMain.handle('thumbs:get', async (_e, filePath: unknown): Promise<string | null> => {
+    const target = resolveInsideRecordings('thumbs:get', filePath);
+    const info = await stat(target).catch(() => null);
+    if (!info) return null;
+    const cached = join(thumbsDir(), `${thumbKey(target, info.size, info.mtimeMs)}.jpg`);
+    const bytes = await readFile(cached).catch(() => null);
+    return bytes ? `data:image/jpeg;base64,${bytes.toString('base64')}` : null;
+  });
+
+  ipcMain.handle('thumbs:put', async (_e, filePath: unknown, data: unknown): Promise<void> => {
+    const target = resolveInsideRecordings('thumbs:put', filePath);
+    if (!(data instanceof ArrayBuffer) || data.byteLength === 0) {
+      fail('thumbs:put', new Error('Expected image bytes'));
+    }
+    if (data.byteLength > THUMB_MAX_BYTES) {
+      fail('thumbs:put', new Error('Thumbnail too large'));
+    }
+    const bytes = Buffer.from(data);
+    // These bytes come from the renderer and are written to the user's profile,
+    // then served back as image/jpeg. Size alone does not make them an image.
+    if (!looksLikeJpeg(bytes)) {
+      fail('thumbs:put', new Error('Not a JPEG'));
+    }
+
+    const info = await stat(target).catch(() => null);
+    if (!info) fail('thumbs:put', new Error('That recording is gone'));
+
+    const dir = thumbsDir();
+    mkdirSync(dir, { recursive: true });
+    const finalPath = join(dir, `${thumbKey(target, info.size, info.mtimeMs)}.jpg`);
+    // Same atomic write as everything else here: a torn image is worse than none.
+    const tmp = `${finalPath}.${randomUUID()}.part`;
+    try {
+      await writeFile(tmp, bytes);
+      await rename(tmp, finalPath);
+    } catch (err) {
+      await unlink(tmp).catch(() => undefined);
+      fail('thumbs:put', err);
+    }
+    void trimThumbCache();
+  });
+
   ipcMain.handle('recordings:begin', async (_e, ext: unknown): Promise<string> => {
     // Refusing here beats a recording that dies at an arbitrary point. The
     // floor is deliberately low: this blocks the hopeless case only, and the
@@ -820,6 +871,16 @@ function registerIpc(): void {
       await new Promise<void>((res, rej) => {
         rec.stream.end((err?: Error | null) => (err ? rej(err) : res()));
       });
+      // A capture that produced nothing must not become a file. It happens when
+      // a recording is stopped in the same instant it starts, and it leaves an
+      // unplayable 0-byte entry in the library forever.
+      const part = await stat(rec.partPath).catch(() => null);
+      if (!part || part.size === 0) {
+        await discard(rec);
+        stopMemorySampling();
+        fail('recordings:finish', new Error('Nothing was recorded'));
+      }
+
       // Placing the file is what makes this atomic. Until it lands, a crash
       // leaves a .part file rather than a truncated file wearing a valid name.
       await placeRecording(rec.partPath, rec.finalPath);
@@ -1066,6 +1127,105 @@ function hideOutline(): void {
   if (outlineWindow && !outlineWindow.isDestroyed()) outlineWindow.close();
   outlineWindow = null;
   outlineRect = null;
+}
+
+/* --------------------------------------------------------------- thumbnails */
+
+/**
+ * Cached tile images, under userData -- never beside the recordings, which hold
+ * the user's media and nothing of ours.
+ *
+ * **The cache is disposable.** Nothing but tile display may read it: delete the
+ * directory and listing, playback, duration and delete all still work. The
+ * moment it holds authoritative metadata it has become an index, and then losing
+ * it loses something.
+ */
+const THUMB_MAX_BYTES = 256 * 1024;
+const THUMB_CACHE_BYTES = 64 * 1024 * 1024;
+
+function thumbsDir(): string {
+  return join(app.getPath('userData'), 'thumbnails');
+}
+
+/**
+ * Cache key: name, size and modified time together.
+ *
+ * Replacing a file at the same path changes its size or mtime, so it gets a new
+ * key and the stale image can never be served for new content.
+ */
+function thumbKey(filePath: string, size: number, mtimeMs: number): string {
+  return createHash('sha1').update(`${filePath}:${size}:${mtimeMs}`).digest('hex');
+}
+
+/** JPEG starts FF D8 FF and ends FF D9. */
+function looksLikeJpeg(bytes: Buffer): boolean {
+  return (
+    bytes.length > 4 &&
+    bytes[0] === 0xff &&
+    bytes[1] === 0xd8 &&
+    bytes[2] === 0xff &&
+    bytes[bytes.length - 2] === 0xff &&
+    bytes[bytes.length - 1] === 0xd9
+  );
+}
+
+/** Keep the cache bounded: oldest entries go first. */
+async function trimThumbCache(): Promise<void> {
+  const dir = thumbsDir();
+  try {
+    const names = await readdir(dir);
+    const entries = await Promise.all(
+      names.map(async (name) => {
+        const p = join(dir, name);
+        const info = await stat(p).catch(() => null);
+        return info ? { p, size: info.size, mtimeMs: info.mtimeMs } : null;
+      }),
+    );
+    const live = entries.filter((e): e is NonNullable<typeof e> => e !== null);
+    let total = live.reduce((a, e) => a + e.size, 0);
+    if (total <= THUMB_CACHE_BYTES) return;
+
+    live.sort((a, b) => a.mtimeMs - b.mtimeMs);
+    for (const entry of live) {
+      if (total <= THUMB_CACHE_BYTES) break;
+      await unlink(entry.p).catch(() => undefined);
+      total -= entry.size;
+    }
+  } catch {
+    // No cache directory yet, or an unreadable one: nothing to trim.
+  }
+}
+
+/** Drop images whose recording is gone. Runs at startup beside part recovery. */
+async function pruneThumbs(): Promise<void> {
+  const dir = thumbsDir();
+  let names: string[];
+  try {
+    names = await readdir(dir);
+  } catch {
+    return;
+  }
+
+  const wanted = new Set<string>();
+  try {
+    for (const name of await readdir(getRecordingsDir())) {
+      if (!isPlayable(name)) continue;
+      const p = join(getRecordingsDir(), name);
+      const info = await stat(p).catch(() => null);
+      if (info) wanted.add(`${thumbKey(p, info.size, info.mtimeMs)}.jpg`);
+    }
+  } catch {
+    // Recordings folder unreadable: leave the cache alone rather than wipe it.
+    return;
+  }
+
+  let removed = 0;
+  for (const name of names) {
+    if (wanted.has(name)) continue;
+    await unlink(join(dir, name)).catch(() => undefined);
+    removed += 1;
+  }
+  if (removed > 0) console.log(`[thumbs] pruned ${removed} stale image(s)`);
 }
 
 /* --------------------------------------------------------------------- tray */
@@ -1322,6 +1482,7 @@ app.whenReady().then(() => {
   registerHudRelay();
   // Reclaim anything a previous crash left behind, before a new recording starts.
   void recoverOrphanedParts();
+  void pruneThumbs();
   createBar();
 
   // Start and stop without reaching for the bar, which is the point of a hotkey

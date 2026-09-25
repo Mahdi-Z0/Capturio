@@ -449,10 +449,14 @@ body {
 /* Reserved for thumbnails (02-02). Sized now so filling it causes no reflow. */
 .tile__thumb {
   display: block;
+  width: 100%;
   aspect-ratio: 16 / 9;
   border-radius: 5px;
   background: #0c0d13;
   border: 1px solid #23252f;
+  /* contain, not cover: a region recording can be any shape, and cropping it
+     would hide the very part that identifies it. */
+  object-fit: contain;
 }
 
 .tile__name {

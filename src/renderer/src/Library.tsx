@@ -23,6 +23,38 @@ function formatDuration(sec: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+/** Tile art: wide enough to stay sharp on a high-DPI screen, small enough to cache. */
+const THUMB_WIDTH = 320;
+
+/**
+ * Grab a still from a loaded video element.
+ *
+ * Taken from the probe that is already open for the duration, so a tile costs
+ * one decode rather than two. Returns null whenever the frame cannot be read --
+ * a thumbnail is decoration, and no tile art is fine.
+ */
+async function captureFrame(video: HTMLVideoElement): Promise<ArrayBuffer | null> {
+  const ratio = video.videoHeight / video.videoWidth;
+  if (!Number.isFinite(ratio) || ratio <= 0) return null;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = THUMB_WIDTH;
+  canvas.height = Math.max(1, Math.round(THUMB_WIDTH * ratio));
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  try {
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  } catch {
+    return null;
+  }
+
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, 'image/jpeg', 0.72),
+  );
+  return blob ? await blob.arrayBuffer() : null;
+}
+
 /**
  * Read durations without flooding the machine.
  *
@@ -36,9 +68,11 @@ const MAX_CONCURRENT_PROBES = 4;
 
 function useDurations(items: RecordingListItem[]): {
   durations: Record<string, number>;
+  thumbs: Record<string, string>;
   observe: (path: string, el: HTMLElement | null) => void;
 } {
   const [durations, setDurations] = useState<Record<string, number>>({});
+  const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const visible = useRef(new Set<string>());
   const queued = useRef(new Set<string>());
   const running = useRef(0);
@@ -60,7 +94,11 @@ function useDurations(items: RecordingListItem[]): {
       running.current += 1;
 
       const probe = document.createElement('video');
-      probe.preload = 'metadata';
+      // Without this the canvas is tainted by a cross-origin source and toBlob
+      // throws; the protocol answers with Access-Control-Allow-Origin to match.
+      probe.crossOrigin = 'anonymous';
+      // 'metadata' is not enough to draw a frame; the seek below needs pixels.
+      probe.preload = 'auto';
       probe.muted = true;
       const done = (value?: number): void => {
         if (value !== undefined) setDurations((d) => ({ ...d, [next]: value }));
@@ -69,7 +107,37 @@ function useDurations(items: RecordingListItem[]): {
         running.current -= 1;
         pumpRef.current();
       };
-      probe.onloadedmetadata = () => done(probe.duration);
+
+      probe.onloadedmetadata = () => {
+        const duration = probe.duration;
+        window.api
+          .getThumbnail(next)
+          .then(async (cached) => {
+            if (cached) {
+              setThumbs((t) => ({ ...t, [next]: cached }));
+              done(duration);
+              return;
+            }
+            // A little way in: the first frame of a screen recording is often
+            // the moment before anything happened.
+            const at = Number.isFinite(duration) ? Math.min(1.5, duration * 0.15) : 0;
+            const seeked = new Promise<void>((resolve) => {
+              probe.onseeked = () => resolve();
+              probe.onerror = () => resolve();
+              setTimeout(resolve, 4000);
+              probe.currentTime = at;
+            });
+            await seeked;
+            const jpeg = await captureFrame(probe);
+            if (jpeg) {
+              await window.api.putThumbnail(next, jpeg).catch(() => undefined);
+              const stored = await window.api.getThumbnail(next).catch(() => null);
+              if (stored) setThumbs((t) => ({ ...t, [next]: stored }));
+            }
+            done(duration);
+          })
+          .catch(() => done(duration));
+      };
       probe.onerror = () => done();
       probe.src = item.playbackUrl;
     }
@@ -105,7 +173,7 @@ function useDurations(items: RecordingListItem[]): {
     observer.current?.observe(el);
   }, []);
 
-  return { durations, observe };
+  return { durations, thumbs, observe };
 }
 
 export interface LibraryProps {
@@ -119,7 +187,7 @@ export default function Library({ refreshKey }: LibraryProps): React.JSX.Element
   const [error, setError] = useState<string | null>(null);
   const [confirmingPermanent, setConfirmingPermanent] = useState(false);
   const [expanded, setExpanded] = useState(false);
-  const { durations, observe } = useDurations(items ?? []);
+  const { durations, thumbs, observe } = useDurations(items ?? []);
   // Derived from the element itself, not from the file name: the only reliable
   // signal is what the decoder reports once metadata is in.
   const [unindexed, setUnindexed] = useState(false);
@@ -283,9 +351,13 @@ export default function Library({ refreshKey }: LibraryProps): React.JSX.Element
                     onClick={() => select(item.filePath)}
                     aria-pressed={selected === item.filePath}
                   >
-                    {/* Reserved for 02-02 thumbnails; sized now so adding them
-                        later does not relayout the grid. */}
-                    <span className="tile__thumb" aria-hidden="true" />
+                    {/* The placeholder keeps its size when no image exists, so
+                        tiles never reflow as thumbnails arrive. */}
+                    {thumbs[item.filePath] ? (
+                      <img className="tile__thumb" src={thumbs[item.filePath]} alt="" />
+                    ) : (
+                      <span className="tile__thumb" aria-hidden="true" />
+                    )}
                     <span className="tile__name">{item.fileName}</span>
                     <span className="tile__meta">
                       {formatWhen(item.modifiedAt)}
