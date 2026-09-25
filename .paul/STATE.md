@@ -75,7 +75,7 @@ PLAN ──▶ APPLY ──▶ UNIFY
 | Legacy capture path applied then reverted same day | It won on average fps while doubling jitter — the metric that actually matters | Reverted to getDisplayMedia; CLAUDE.md corrected |
 | Orphaned .part files were never reclaimed | User lost a recording to a flat battery; 31.4s was recoverable but stranded | `recoverOrphanedParts()` — **verified 2026-09-17**: reclaimed the 11.2 MB orphan intact |
 | ~~AC-5/AC-7 unexercised~~ | **Closed 2026-09-17** via dev-only `__sim` hooks, after three plans | Root cause was diagnostic: both were written against UI this app never shows |
-| AC-6 still unevidenced after four plans | Instrumentation correct and pid-pinned, but no `[memory]` series captured | One 5-minute recording with console output pasted back |
+| ~~AC-6 unevidenced~~ — **closed 2026-09-25**: 5 min at Maximum, 105 MB file, memory 333.0 -> 332.2 MB median (growth 1.00x), duration and seek exact | Evidence captured by driving the built app; the new log file made the `[memory]` series retrievable |
 | Defensive criteria keep shipping unexercised — AC-2, AC-5b, AC-5c, AC-8 refusals | Third plan with this pattern | **Folded into 02-02** as AC-6..AC-9, with an automated `verify:guards` script for the protocol refusals |
 | ~~Recordings carry no Duration and no Cues~~ | **Fixed 2026-09-18 in 05-01**: duration 20.673 s recovered, seek 561 ms → 63 ms, cluster bytes identical | Existing recordings deliberately left alone at the user's choice; the player names the condition instead |
 | MP4 cannot replace WebM | Chromium's MP4 muxer emits nothing until stop — 750 MB in memory for 5 min, and a power cut loses everything | Measured 2026-09-18. Re-measure before revisiting |
@@ -110,7 +110,7 @@ Protected for Plan 03-01:
 ## Session Continuity
 
 Last session: 2026-09-18
-Stopped at: tray icon, persisted log, free-space check and thumbnails (02-02) all shipped
+Stopped at: tray, log, free-space, thumbnails shipped; AC-6 memory evidence finally captured
 Next action: rename to Capturio, README, then packaging (npm run dist has never been run)
 Resume file: .paul/phases/05-playback-and-controls/05-02-SUMMARY.md
 

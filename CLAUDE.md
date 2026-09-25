@@ -228,6 +228,12 @@ using existing frame` fired on ~3 of every 4 ticks. Ruled out: GPU choice (`--fo
 / `--force_high_performance_gpu`), WGC feature flags, direct composition, window focus, power plan.
 Before blaming code for choppy full-screen recordings, run those logs first.
 
+**Memory is flat over a long recording.** Measured 2026-09-25, five minutes at Maximum (60 fps,
+40 Mbps) with computer audio, producing a 105 MB file: 20 samples, minute-1 median 333.0 MB,
+minute-5 median 332.2 MB, peak 334.6 MB — a growth ratio of 1.00x. The streaming save path holds
+nothing per-minute, which is what it was built for. The finished file reported 297.67 s and a seek
+to 267.90 s landed exactly. Re-run with `scripts/` driving the built app if the save path changes.
+
 **Benchmark before believing.** `npm run bench:capture` exists because three separate quality
 "fixes" (bitrate, codec, scaler) were shipped against a frame-rate problem. It reports the motion
 source's own rate alongside capture delivery, so a slow test source can no longer masquerade as a
