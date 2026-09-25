@@ -7,6 +7,7 @@ import {
   DEFAULT_AUDIO_MODE,
   DEFAULT_QUALITY,
   QUALITY_PRESETS,
+  LOW_SPACE_BYTES,
   SCREEN_TARGET,
   type AudioMode,
   type CaptureTarget,
@@ -82,6 +83,7 @@ export default function Bar(): React.JSX.Element {
   const [audio, setAudio] = useState<AudioMode>(DEFAULT_AUDIO_MODE);
   const [quality, setQuality] = useState<QualityPreset>(DEFAULT_QUALITY);
   const [panel, setPanel] = useState<Panel>('none');
+  const [lowSpace, setLowSpace] = useState<number | null>(null);
   const shellRef = useRef<HTMLDivElement>(null);
 
   const recording = status === 'recording';
@@ -100,7 +102,19 @@ export default function Bar(): React.JSX.Element {
       .getQuality()
       .then(setQuality)
       .catch(() => undefined);
-  }, []);
+
+    // Checked when the bar appears and after each recording, not on a timer: a
+    // disk does not fill while nothing is being written.
+    const checkSpace = (): void => {
+      window.api
+        .getFreeSpace()
+        .then((free) => setLowSpace(free !== null && free < LOW_SPACE_BYTES ? free : null))
+        .catch(() => undefined);
+    };
+    checkSpace();
+    window.addEventListener('focus', checkSpace);
+    return () => window.removeEventListener('focus', checkSpace);
+  }, [lastSaved]);
 
 
   const setAudioMode = useCallback((next: AudioMode) => {
@@ -164,6 +178,9 @@ export default function Bar(): React.JSX.Element {
   const note =
     error ??
     captureInfo?.audioNote ??
+    (lowSpace !== null && !recording
+      ? `Only ${(lowSpace / 1e9).toFixed(1)} GB left where recordings are saved`
+      : null) ??
     (recording
       ? null
       : target === null
@@ -317,9 +334,9 @@ export default function Bar(): React.JSX.Element {
               <button
                 type="button"
                 className="icon icon--quit"
-                onClick={() => void window.api.quitApp()}
-                title="Close ScreenRecorder"
-                aria-label="Close ScreenRecorder"
+                onClick={() => void window.api.hideBar()}
+                title="Hide — bring it back from the tray icon"
+                aria-label="Hide the bar"
               >
                 <CloseIcon />
               </button>

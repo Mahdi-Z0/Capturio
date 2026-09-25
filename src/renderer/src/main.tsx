@@ -7,6 +7,15 @@ import './index.css';
 import './bar.css';
 import './region.css';
 
+// Renderer failures reach the log too, or a crash in a window leaves the same
+// silence the log exists to remove.
+window.addEventListener('error', (e) => {
+  window.api?.reportProblem('error', `${e.message} (${e.filename}:${e.lineno})`);
+});
+window.addEventListener('unhandledrejection', (e) => {
+  window.api?.reportProblem('error', `unhandled rejection: ${String(e.reason)}`);
+});
+
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root element');
 

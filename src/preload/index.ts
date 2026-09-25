@@ -70,6 +70,14 @@ const api = {
     ipcRenderer.send('bar:resize', height);
   },
   openLibrary: (): Promise<void> => ipcRenderer.invoke('library:open'),
+  getFreeSpace: (): Promise<number | null> => ipcRenderer.invoke('recordings:free-space'),
+
+  reportProblem: (level: 'error' | 'warn', message: string): void => {
+    ipcRenderer.send('log:renderer', level, message);
+  },
+  openLog: (): Promise<void> => ipcRenderer.invoke('log:open'),
+
+  hideBar: (): Promise<void> => ipcRenderer.invoke('bar:hide'),
   quitApp: (): Promise<void> => ipcRenderer.invoke('app:quit'),
 
   revealRecording: (filePath: string): Promise<void> =>

@@ -4,18 +4,31 @@ import {
   desktopCapturer,
   globalShortcut,
   ipcMain,
+  Menu,
+  nativeImage,
   protocol,
   screen,
   session,
   shell,
+  Tray,
 } from 'electron';
 import { createWriteStream, mkdirSync, type WriteStream } from 'node:fs';
-import { stat, rename, unlink, readdir, access, readFile, writeFile } from 'node:fs/promises';
+import {
+  stat,
+  statfs,
+  rename,
+  unlink,
+  readdir,
+  access,
+  readFile,
+  writeFile,
+} from 'node:fs/promises';
 import { join, resolve, sep, extname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { resolveRecordingRequest } from './recordingPath.cjs';
 import { createRangeResponse } from './byteRange.cjs';
 import { finalizeWebm } from './webmFinalize.cjs';
+import * as log from './log.cjs';
 import type {
   AudioMode,
   CaptureTarget,
@@ -151,6 +164,24 @@ async function discard(rec: ActiveRecording): Promise<void> {
 }
 
 /**
+ * Free space on the drive the recordings folder lives on.
+ *
+ * Checked before recording rather than discovered during it: a disk that fills
+ * mid-capture ends the recording at an arbitrary point, and the person only
+ * finds out afterwards. Returns null if the platform will not say, which is a
+ * reason to proceed rather than to block.
+ */
+async function freeSpaceBytes(): Promise<number | null> {
+  try {
+    const stats = await statfs(getRecordingsDir());
+    return stats.bsize * stats.bavail;
+  } catch (err) {
+    console.error('[space] could not read free space:', err);
+    return null;
+  }
+}
+
+/**
  * Move a finished .part into place, making it seekable on the way.
  *
  * MediaRecorder leaves WebM in its live-streaming profile: no Duration, no Cues,
@@ -252,6 +283,8 @@ async function recoverOrphanedParts(): Promise<number> {
 // v2 adds `audio`. A v1 file -- which is what is on disk today -- must keep its
 // quality preset and gain an audio default, then be rewritten. Bumping without
 // handling that would either throw on read or silently reset the user's choice.
+/** Below this, a recording is not worth starting. */
+const MIN_FREE_BYTES = 300 * 1024 * 1024;
 const SETTINGS_VERSION = 3;
 
 interface SettingsFile {
@@ -628,6 +661,23 @@ function registerIpc(): void {
 
   ipcMain.handle('app:quit', (): void => app.quit());
 
+  // Renderer failures belong in the same file as main's, in order.
+  ipcMain.on('log:renderer', (_e, level: unknown, message: unknown) => {
+    if (typeof message === 'string') {
+      log.fromRenderer(level === 'error' ? 'error' : 'warn', message.slice(0, 2000));
+    }
+  });
+
+  ipcMain.handle('log:open', async (): Promise<void> => {
+    const p = log.currentPath();
+    if (p) await shell.openPath(p);
+  });
+
+  ipcMain.handle('bar:hide', (): void => {
+    barWindow?.hide();
+    trayRefresh?.();
+  });
+
   ipcMain.handle('region:select', (): Promise<RegionRect | null> => selectRegion());
 
   ipcMain.handle('capture:set-target', (_e, target: unknown): void => {
@@ -706,7 +756,21 @@ function registerIpc(): void {
 
   ipcMain.handle('recordings:dir', () => getRecordingsDir());
 
+  ipcMain.handle('recordings:free-space', (): Promise<number | null> => freeSpaceBytes());
+
   ipcMain.handle('recordings:begin', async (_e, ext: unknown): Promise<string> => {
+    // Refusing here beats a recording that dies at an arbitrary point. The
+    // floor is deliberately low: this blocks the hopeless case only, and the
+    // renderer warns well before it.
+    const free = await freeSpaceBytes();
+    if (free !== null && free < MIN_FREE_BYTES) {
+      fail(
+        'recordings:begin',
+        new Error(
+          `Only ${(free / 1e6).toFixed(0)} MB free where recordings are saved. Free up some space first.`,
+        ),
+      );
+    }
     if (typeof ext !== 'string' || !/^[a-z0-9]{2,5}$/i.test(ext)) {
       fail('recordings:begin', new Error(`Invalid extension: ${String(ext)}`));
     }
@@ -1004,6 +1068,81 @@ function hideOutline(): void {
   outlineRect = null;
 }
 
+/* --------------------------------------------------------------------- tray */
+
+let tray: Tray | null = null;
+let trayRefresh: (() => void) | null = null;
+let recordingNow = false;
+
+/** Icons live outside the asar in a packaged build, beside it in development. */
+function resourcePath(file: string): string {
+  return app.isPackaged
+    ? join(process.resourcesPath, file)
+    : join(__dirname, '..', '..', 'resources', file);
+}
+
+function toggleBar(): void {
+  if (!barWindow || barWindow.isDestroyed()) {
+    createBar();
+  createTray();
+  } else if (barWindow.isVisible()) {
+    barWindow.hide();
+  } else {
+    barWindow.show();
+  }
+  trayRefresh?.();
+}
+
+/**
+ * The tray icon is what makes hiding the bar safe.
+ *
+ * Without it, closing the only window would strand the app: still running with
+ * no way back, or gone when a recording might still be in progress. From here
+ * the bar can be summoned, a recording stopped, and the app actually quit.
+ */
+function createTray(): void {
+  if (tray) return;
+
+  const image = nativeImage.createFromPath(resourcePath('tray-16.png'));
+  // createFromPath returns an EMPTY image for a missing file rather than
+  // throwing, which would ship as a blank tray icon nobody can click.
+  if (image.isEmpty()) {
+    console.error(`[tray] icon missing at ${resourcePath('tray-16.png')}; run npm run icons`);
+  }
+  // Windows draws the tray at 16px logical; the 32px art is the 200% variant.
+  image.addRepresentation({
+    scaleFactor: 2,
+    buffer: nativeImage.createFromPath(resourcePath('tray-32.png')).toPNG(),
+  });
+  tray = new Tray(image);
+  tray.setToolTip('ScreenRecorder');
+
+  trayRefresh = (): void => {
+    tray?.setContextMenu(
+      Menu.buildFromTemplate([
+        {
+          label: barWindow?.isVisible() ? 'Hide the bar' : 'Show the bar',
+          click: () => toggleBar(),
+        },
+        {
+          label: recordingNow ? 'Stop recording' : 'Start recording',
+          // The bar decides what this means -- it holds the recorder and knows
+          // what is currently selected.
+          click: () => barWindow?.webContents.send('hud:command', 'toggle'),
+        },
+        { type: 'separator' },
+        { label: 'Recordings', click: () => openLibrary() },
+        { type: 'separator' },
+        { label: 'Quit ScreenRecorder', click: () => app.quit() },
+      ]),
+    );
+  };
+
+  trayRefresh();
+  // A single click is the gesture people expect from a tray icon.
+  tray.on('click', () => toggleBar());
+}
+
 /* ---------------------------------------------------------------------- bar */
 
 let barWindow: BrowserWindow | null = null;
@@ -1099,6 +1238,17 @@ function registerHudRelay(): void {
   ipcMain.on('hud:state', (_e, state: HudState) => {
     if (state?.recording && captureTarget.kind === 'region') showOutline(captureTarget.rect);
     else hideOutline();
+
+    if (state?.recording !== recordingNow) {
+      recordingNow = Boolean(state?.recording);
+      trayRefresh?.();
+      // A recording started by the hotkey while the bar was hidden needs its
+      // indicator back: the bar is the only thing showing that this is recording.
+      if (recordingNow && barWindow && !barWindow.isDestroyed() && !barWindow.isVisible()) {
+        barWindow.showInactive();
+        trayRefresh?.();
+      }
+    }
   });
 
   // Relayed, because the recorder and the recordings list live in different
@@ -1161,6 +1311,10 @@ function openLibrary(): void {
   createLibraryWindow();
 }
 
+// Before anything else: from here on, whatever the app reports also lands on
+// disk. Errors during startup are exactly the ones with no console present.
+log.start(join(app.getPath('userData'), 'logs'));
+
 app.whenReady().then(() => {
   registerDisplayMediaHandler();
   registerRecordingProtocol();
@@ -1180,7 +1334,15 @@ app.whenReady().then(() => {
   app.on('activate', () => createBar());
 });
 
-app.on('will-quit', () => globalShortcut.unregisterAll());
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
+  tray?.destroy();
+  tray = null;
+});
+
+// Hiding the bar leaves no open window, which must not end the app: the tray is
+// still there, and a recording may still be running.
+app.on('window-all-closed', () => undefined);
 
 /**
  * Closing the window mid-recording must not silently throw away what was captured.

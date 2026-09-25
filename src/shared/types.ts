@@ -38,6 +38,9 @@ export interface RegionRect {
 /** Smaller than this and a drag was a stray click, not a selection. */
 export const MIN_REGION_SIZE = 16;
 
+/** Warn below this much free space; main refuses below 300 MB. */
+export const LOW_SPACE_BYTES = 2 * 1024 * 1024 * 1024;
+
 export function isRegionRect(v: unknown): v is RegionRect {
   if (typeof v !== 'object' || v === null) return false;
   const r = v as Record<string, unknown>;
@@ -320,7 +323,17 @@ export interface RecorderApi {
   resizeBar(height: number): void;
   /** Open (or focus) the recordings window. */
   openLibrary(): Promise<void>;
-  /** Close the app from the bar, which is the app's only always-present window. */
+  /** Free bytes where recordings are saved, or null if unknown. */
+  getFreeSpace(): Promise<number | null>;
+
+  /** Report a renderer failure into the app log. */
+  reportProblem(level: 'error' | 'warn', message: string): void;
+  /** Open the log file in whatever the system uses for text. */
+  openLog(): Promise<void>;
+
+  /** Hide the bar. It comes back from the tray icon. */
+  hideBar(): Promise<void>;
+  /** Quit outright. Offered from the tray, not the bar. */
   quitApp(): Promise<void>;
 
   revealRecording(filePath: string): Promise<void>;
