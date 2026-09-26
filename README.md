@@ -17,9 +17,10 @@ While recording, the same bar becomes the timer and the controls.
 - **60 fps** by default, at three quality levels.
 - **Pause and resume** mid-recording, and **mute** without ending the recording.
 
-When a recording lands, a small card appears under the bar with the file's name, **Open** and **Show
-in folder** — clicking the card itself shows it in the folder. Nothing opens over your work; the card
-puts itself away after a few seconds.
+When a recording lands, a small card appears under the bar with the file's name, **Play** and **Show in
+library** — clicking the card itself does the same as the latter. Both stay inside Capturio: the
+recordings window opens at that recording, with it selected. Nothing opens over your work on its own,
+and the card puts itself away after a few seconds.
 
 Recordings are saved to `Videos\Capturio` as WebM, and the built-in library lets you watch, reveal,
 organise and delete them. It browses like a file window — back, forward, up and a breadcrumb —

@@ -105,6 +105,17 @@ export interface FolderEntry {
   modifiedAt: string;
 }
 
+/**
+ * "Show me this recording": the bar's saved card asking the recordings window to
+ * go to a recording, rather than handing it to Explorer or another player.
+ */
+export interface RevealRequest {
+  /** Relative to the recordings folder, `/`-separated. */
+  relativePath: string;
+  /** Start playing it, rather than only selecting it. */
+  play: boolean;
+}
+
 /** One folder's contents: what the recordings window shows at a given level. */
 export interface FolderListing {
   /** Relative to the recordings folder; `''` is the folder itself. */
@@ -370,6 +381,15 @@ export interface RecorderApi {
   resizeBar(height: number): void;
   /** Open (or focus) the recordings window. */
   openLibrary(): Promise<void>;
+  /** Open it *at* a recording: its folder, selected, playing if asked. */
+  revealInLibrary(filePath: string, play: boolean): Promise<void>;
+  /**
+   * Recordings window, on mount: collect a request made before it could listen.
+   * Returns null when there is none, and clears it either way.
+   */
+  takePendingReveal(): Promise<RevealRequest | null>;
+  /** Recordings window: a request that arrived while it was already open. */
+  onShowRecording(handler: (request: RevealRequest) => void): () => void;
   /** Cached tile image as a data: URL, or null when there is none yet. */
   getThumbnail(filePath: string): Promise<string | null>;
   /** Store a tile image. Rejects anything that is not a small JPEG. */

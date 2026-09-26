@@ -46,6 +46,7 @@ import type {
   RecordingListItem,
   FolderEntry,
   FolderListing,
+  RevealRequest,
 } from '../shared/types.js';
 import {
   DEFAULT_AUDIO_MODE,
@@ -833,6 +834,40 @@ function registerIpc(): void {
 
   ipcMain.handle('library:open', (): void => openLibrary());
 
+  /**
+   * Show a recording in the recordings window: its folder, selected, playing if
+   * asked.
+   *
+   * The saved-recording card used to hand these off to Windows — Explorer for
+   * "show in folder", the default player for "open". Both belong in the app: it
+   * has a folder view and a player of its own, and sending someone out to
+   * another program to look at what they just recorded is the long way round.
+   *
+   * A window that is still loading cannot be told anything, and the renderer's
+   * listener is not attached until React has mounted. So the request is *left*
+   * for the window to collect on mount, and only sent as an event when there is
+   * a loaded window already there to receive it.
+   */
+  ipcMain.handle('library:reveal', (_e, filePath: unknown, play: unknown): void => {
+    const target = resolveInsideRecordings('library:reveal', filePath);
+    const request: RevealRequest = { relativePath: relativeOf(target), play: play === true };
+    const ready =
+      libraryWindow && !libraryWindow.isDestroyed() && !libraryWindow.webContents.isLoading();
+    openLibrary();
+    if (ready && libraryWindow) {
+      libraryWindow.webContents.send('library:show', request);
+      pendingReveal = null;
+    } else {
+      pendingReveal = request;
+    }
+  });
+
+  ipcMain.handle('library:take-pending', (): RevealRequest | null => {
+    const request = pendingReveal;
+    pendingReveal = null;
+    return request;
+  });
+
   ipcMain.handle('app:quit', (): void => app.quit());
 
   // Renderer failures belong in the same file as main's, in order.
@@ -1618,6 +1653,15 @@ function createTray(): void {
 
 let barWindow: BrowserWindow | null = null;
 let libraryWindow: BrowserWindow | null = null;
+
+/**
+ * A "show me this recording" request waiting to be collected.
+ *
+ * Held rather than sent when the window is being created for it: the renderer's
+ * listener does not exist until React has mounted, and an event sent before that
+ * goes nowhere.
+ */
+let pendingReveal: RevealRequest | null = null;
 
 const BAR_WIDTH = 468;
 const BAR_HEIGHT = 64;

@@ -380,8 +380,8 @@ export default function Bar(): React.JSX.Element {
           <button
             type="button"
             className="saved__main"
-            onClick={() => void window.api.revealRecording(savedCard.filePath).catch(() => undefined)}
-            title="Show in folder"
+            onClick={() => void window.api.revealInLibrary(savedCard.filePath, false).catch(() => undefined)}
+            title="Show it in the recordings window"
           >
             <span className="saved__tick" aria-hidden="true">
               <CheckIcon />
@@ -392,19 +392,22 @@ export default function Bar(): React.JSX.Element {
             </span>
           </button>
           <div className="saved__actions">
+            {/* Both stay in the app: it has a player and a folder view of its
+                own, so handing this to Explorer or to whatever owns .webm is the
+                long way round to look at what you just recorded. */}
             <button
               type="button"
               className="saved__action"
-              onClick={() => void window.api.openRecordingExternally(savedCard.filePath).catch(() => undefined)}
+              onClick={() => void window.api.revealInLibrary(savedCard.filePath, true).catch(() => undefined)}
             >
-              Open
+              Play
             </button>
             <button
               type="button"
               className="saved__action"
-              onClick={() => void window.api.revealRecording(savedCard.filePath).catch(() => undefined)}
+              onClick={() => void window.api.revealInLibrary(savedCard.filePath, false).catch(() => undefined)}
             >
-              Show in folder
+              Show in library
             </button>
             <button
               type="button"

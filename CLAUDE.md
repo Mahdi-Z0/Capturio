@@ -367,10 +367,24 @@ Bin refuses.
 
 ## Saying where the recording went
 
-`Bar.tsx` shows a card under the bar when a recording lands: the name, **Open**, **Show in folder**,
-and the card body itself reveals it, because that is what clicking a save notification is expected to
-do. It is not a Windows toast and it does not open the recordings window — a window appearing over
+`Bar.tsx` shows a card under the bar when a recording lands: the name, **Play**, **Show in library**,
+and the card body does the same as the latter, because that is what clicking a save notification is
+expected to do. It is not a Windows toast, and nothing opens on its own — a window appearing over
 someone's work the moment they stop recording is the interruption the bar exists to avoid.
+
+**Both actions stay in the app.** They used to hand off to Explorer and to whatever owns `.webm`;
+this app has a folder view and a player of its own, so sending someone out to another program to look
+at what they just recorded was the long way round. `library:reveal` opens the recordings window at
+that recording's folder, selects it, and plays it when asked.
+
+**A window being created cannot be told anything.** The renderer's listener does not exist until React
+has mounted, and `did-finish-load` is no guarantee of that, so main *holds* the request in
+`pendingReveal` and the window collects it on mount with `library:take-pending`; the event is only
+sent when there is a loaded window already listening. In the window, the request is held in a **ref**
+until the folder read that can satisfy it completes — the listing arrives after the navigation, so the
+file does not exist to select yet — and `showRecording` calls `reload()` unconditionally, because the
+recording is usually in the folder already on screen and `go()` alone would change nothing. Verified
+cold (no window), warm (open, and looking at another folder) and hidden (mid-recording).
 
 It is **derived**, not stored: `lastSaved` never clears, so the card is `lastSaved && !recording &&
 not dismissed`. An effect that copied it into state would trip `react-hooks/set-state-in-effect`, and

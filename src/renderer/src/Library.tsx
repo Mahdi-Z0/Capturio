@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { FolderEntry, FolderListing, RecordingListItem } from '../../shared/types.js';
+import type {
+  FolderEntry,
+  FolderListing,
+  RecordingListItem,
+  RevealRequest,
+} from '../../shared/types.js';
 import {
   BackIcon,
   CheckIcon,
@@ -258,6 +263,11 @@ export default function Library({ refreshKey }: LibraryProps): React.JSX.Element
   const playerRef = useRef<HTMLVideoElement>(null);
   const newFolderRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  // A recording the bar has asked us to show, held until its folder has loaded:
+  // the listing arrives after the navigation, so the file cannot be picked yet.
+  // A ref, not state, because the folder read is what consumes it and an extra
+  // render between the two would only show the folder with nothing selected.
+  const pendingPick = useRef<RevealRequest | null>(null);
 
   // A recording is starting and this window is being hidden. Hiding does not
   // stop playback, and whatever is playing here would be recorded.
@@ -276,6 +286,17 @@ export default function Library({ refreshKey }: LibraryProps): React.JSX.Element
         if (cancelled) return;
         setListing(next);
         if (next.path === '') setRootName(next.name);
+
+        const want = pendingPick.current;
+        if (want) {
+          const hit = next.files.find((f) => f.relativePath === want.relativePath);
+          if (hit) {
+            pendingPick.current = null;
+            setSelected([hit.filePath]);
+            setAnchor(hit.filePath);
+            if (want.play) setPlaying(hit.filePath);
+          }
+        }
       } catch (err) {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : String(err));
@@ -405,6 +426,34 @@ export default function Library({ refreshKey }: LibraryProps): React.JSX.Element
     setNewFolder(null);
     await runAction(() => window.api.createFolder(place, name));
   }, [newFolder, place, runAction]);
+
+  /**
+   * Go to a recording the bar asked about: its folder, selected, playing if asked.
+   *
+   * `reload()` unconditionally, because the recording is often in the folder
+   * already on screen — `go()` alone would leave `place` unchanged and the read
+   * that consumes the pending pick would never run.
+   */
+  const showRecording = useCallback(
+    (request: RevealRequest) => {
+      pendingPick.current = request;
+      const cut = request.relativePath.lastIndexOf('/');
+      go(cut === -1 ? '' : request.relativePath.slice(0, cut));
+      reload();
+    },
+    [go, reload],
+  );
+
+  // One request may already be waiting: when this window was opened *by* the
+  // card, main held the request rather than sending it to a window that had no
+  // listener yet.
+  useEffect(() => {
+    void (async () => {
+      const waiting = await window.api.takePendingReveal().catch(() => null);
+      if (waiting) showRecording(waiting);
+    })();
+    return window.api.onShowRecording(showRecording);
+  }, [showRecording]);
 
   /** Click, ctrl-click and shift-click, as every file list has worked for years. */
   const clickTile = useCallback(

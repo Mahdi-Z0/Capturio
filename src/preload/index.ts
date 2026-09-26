@@ -12,6 +12,7 @@ import type {
   RecordingListItem,
   FolderEntry,
   FolderListing,
+  RevealRequest,
 } from '../shared/types.js';
 
 /**
@@ -89,6 +90,15 @@ const api = {
     ipcRenderer.send('bar:resize', height);
   },
   openLibrary: (): Promise<void> => ipcRenderer.invoke('library:open'),
+  revealInLibrary: (filePath: string, play: boolean): Promise<void> =>
+    ipcRenderer.invoke('library:reveal', filePath, play),
+  takePendingReveal: (): Promise<RevealRequest | null> =>
+    ipcRenderer.invoke('library:take-pending'),
+  onShowRecording: (handler: (request: RevealRequest) => void): (() => void) => {
+    const listener = (_e: unknown, request: RevealRequest): void => handler(request);
+    ipcRenderer.on('library:show', listener);
+    return () => ipcRenderer.removeListener('library:show', listener);
+  },
   getThumbnail: (filePath: string): Promise<string | null> =>
     ipcRenderer.invoke('thumbs:get', filePath),
   putThumbnail: (filePath: string, jpeg: ArrayBuffer): Promise<void> =>
