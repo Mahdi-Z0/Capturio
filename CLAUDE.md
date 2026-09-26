@@ -327,8 +327,32 @@ show the Videos folder: that level holds exactly one folder and nothing can be s
 was a level that only ever contained one card.
 
 **One click selects, two clicks play.** Selecting used to open the player with `autoPlay`, so every
-glance at the list started a video. Selection shows what can be done with the recording — play, move
-to a folder, reveal, Recycle Bin, delete permanently — and only a double-click mounts the `<video>`.
+glance at the list started a video. Only a double-click mounts the `<video>`.
+
+**Selection is a list, not a value.** Click picks one, ctrl-click adds or removes one, shift-click
+takes the run from the anchor, Ctrl+A takes the folder, Escape clears. The anchor moves to whatever
+was last clicked, including a ctrl-click, which is what Explorer does. Delete is deliberately *not*
+bound to a key: recoverable or not, a stray keypress should not empty a folder.
+
+Actions apply to the whole selection and one failure does not stop the rest — a folder that cannot
+take one file is no reason to leave the other nine behind — so `runOnSelection` collects failures and
+reports how many of how many failed. Play, Open and Show in folder appear only when exactly one is
+selected; there is no sensible meaning for six.
+
+**The action bar is `position: sticky`.** The selection is often at the bottom of a long folder, and
+scrolling back up to reach a button was the complaint that produced it. It sticks within `.library`,
+which is right: it should leave with the list it belongs to, not float over the window forever.
+
+**The right-click menu is drawn in the renderer, not `Menu.popup()`.** It has to list the folders a
+recording can move to, and it should look like this window rather than a system menu dropped on it.
+Right-clicking outside the selection moves the selection there first, so the menu always acts on what
+is highlighted. There are three menus: a recording, a folder, and the background (new folder, select
+all, open in Explorer).
+
+**Its position is measured, never estimated.** A guessed height put the menu off the bottom edge
+exactly when the folder list was long enough to be worth right-clicking. A `useLayoutEffect` reads the
+rendered box and clamps it to the window before paint, and the menu itself is capped at
+`100vh - 16px` with its own scrolling. Verified from all four corners.
 
 **Recordings can be dragged onto folders, and onto the breadcrumb.** Every drop target is a folder
 path, so dragging onto a crumb moves a recording back out of a subfolder. The drag carries a private

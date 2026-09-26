@@ -23,10 +23,12 @@ puts itself away after a few seconds.
 
 Recordings are saved to `Videos\Capturio` as WebM, and the built-in library lets you watch, reveal,
 organise and delete them. It browses like a file window — back, forward, up and a breadcrumb —
-opening in the recordings folder and never going above it. Click a recording to select it and see
-what you can do with it; double-click to play it. Make your own folders, then drag recordings into
-them (or onto the breadcrumb to move them back out). Deleting a recording or a folder moves it to the
-Recycle Bin unless you explicitly choose otherwise.
+opening in the recordings folder and never going above it. Click a recording to select it, ctrl-click
+to add another, shift-click to take a run, **Ctrl+A** for the lot — then move, bin or delete all of
+them at once from the bar that stays at the top of the page as you scroll. Double-click to play, and
+right-click for the same options in a menu. Make your own folders, then drag recordings into them (or
+onto the breadcrumb to move them back out). Deleting a recording or a folder moves it to the Recycle
+Bin unless you explicitly choose otherwise.
 
 ## Using it
 

@@ -1,10 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { FolderEntry, FolderListing, RecordingListItem } from '../../shared/types.js';
 import {
   BackIcon,
+  CheckIcon,
+  CloseIcon,
+  ExternalIcon,
   FolderIcon,
   FolderPlusIcon,
   ForwardIcon,
+  MoveIcon,
+  PlayIcon,
   TrashIcon,
   UpIcon,
 } from './icons.js';
@@ -184,7 +189,6 @@ function useDurations(items: RecordingListItem[]): {
   return { durations, thumbs, observe };
 }
 
-
 export interface LibraryProps {
   /** Changes when a recording finishes saving; the existing signal, not a new one. */
   refreshKey: unknown;
@@ -204,8 +208,19 @@ function parentOf(place: string): string | null {
   return cut === -1 ? '' : place.slice(0, cut);
 }
 
-/** The drag payload: which recording is being dragged, by absolute path. */
+/** The drag payload: the recordings being dragged, by absolute path, as JSON. */
 const DRAG_TYPE = 'application/x-capturio-recording';
+
+/** Where a right-click menu was asked for, and what it was asked about. */
+interface MenuState {
+  x: number;
+  y: number;
+  kind: 'recording' | 'folder' | 'background';
+  /** The recording or folder the click landed on; empty for the background. */
+  target: string;
+}
+
+const fileNameOf = (p: string): string => p.split(/[\\/]/).pop() ?? p;
 
 export default function Library({ refreshKey }: LibraryProps): React.JSX.Element {
   // Browser history, not a single path: back and forward mean what they mean
@@ -217,15 +232,19 @@ export default function Library({ refreshKey }: LibraryProps): React.JSX.Element
 
   const [listing, setListing] = useState<FolderListing | null>(null);
   const [folders, setFolders] = useState<FolderEntry[]>([]);
-  // Selecting and opening are different acts: one click picks a recording and
-  // offers what can be done with it, two clicks play it. Selecting used to play,
-  // which made every glance at the list start a video.
-  const [selected, setSelected] = useState<string | null>(null);
+  // Selecting and opening are different acts: clicks pick recordings and offer
+  // what can be done with them, a double-click plays one. Several can be picked
+  // at once -- ctrl for one more, shift for a run -- because deleting or filing
+  // a morning's recordings one at a time is the thing that makes a library
+  // tedious.
+  const [selected, setSelected] = useState<string[]>([]);
+  const [anchor, setAnchor] = useState<string | null>(null);
   const [playing, setPlaying] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmingPermanent, setConfirmingPermanent] = useState(false);
   const [confirmingFolder, setConfirmingFolder] = useState<string | null>(null);
   const [newFolder, setNewFolder] = useState<string | null>(null);
+  const [menu, setMenu] = useState<MenuState | null>(null);
   // Which folder a dragged recording is currently over, so the target is visible
   // before the drop rather than after it.
   const [dropTarget, setDropTarget] = useState<string | null>(null);
@@ -238,6 +257,7 @@ export default function Library({ refreshKey }: LibraryProps): React.JSX.Element
   const [unindexed, setUnindexed] = useState(false);
   const playerRef = useRef<HTMLVideoElement>(null);
   const newFolderRef = useRef<HTMLInputElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   // A recording is starting and this window is being hidden. Hiding does not
   // stop playback, and whatever is playing here would be recorded.
@@ -282,11 +302,13 @@ export default function Library({ refreshKey }: LibraryProps): React.JSX.Element
 
   /** Everything a navigation or a change to the folder invalidates. */
   const clearSelection = useCallback(() => {
-    setSelected(null);
+    setSelected([]);
+    setAnchor(null);
     setPlaying(null);
     setConfirmingPermanent(false);
     setConfirmingFolder(null);
     setNewFolder(null);
+    setMenu(null);
   }, []);
 
   const go = useCallback(
@@ -306,7 +328,13 @@ export default function Library({ refreshKey }: LibraryProps): React.JSX.Element
     [clearSelection, history.length],
   );
 
-  const current = listing?.files.find((f) => f.filePath === selected) ?? null;
+  // Memoised because the click and keyboard handlers depend on it; a fresh
+  // array each render would rebuild them every time.
+  const files = useMemo(() => listing?.files ?? [], [listing]);
+  const chosen = useMemo(() => new Set(selected), [selected]);
+  const picked = files.filter((f) => chosen.has(f.filePath));
+  const one = picked.length === 1 ? picked[0] : null;
+  const playingItem = files.find((f) => f.filePath === playing) ?? null;
   const up = parentOf(place);
 
   const runAction = useCallback(
@@ -322,21 +350,50 @@ export default function Library({ refreshKey }: LibraryProps): React.JSX.Element
     [reload],
   );
 
-  const remove = useCallback(
-    async (permanent: boolean) => {
-      if (!current) return;
+  /**
+   * Apply something to every selected recording.
+   *
+   * One failure does not stop the rest -- a folder that cannot take one file is
+   * no reason to leave the other nine where they were -- and what failed is
+   * reported rather than swallowed.
+   */
+  const runOnSelection = useCallback(
+    async (verb: string, paths: string[], fn: (filePath: string) => Promise<unknown>) => {
+      setError(null);
+      setMenu(null);
+      const failures: string[] = [];
+      for (const filePath of paths) {
+        try {
+          await fn(filePath);
+        } catch (err) {
+          failures.push(`${fileNameOf(filePath)} — ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+      if (failures.length > 0) {
+        setError(
+          failures.length === paths.length
+            ? `Could not ${verb}: ${failures[0]}`
+            : `${failures.length} of ${paths.length} could not be ${verb}d. First: ${failures[0]}`,
+        );
+      }
       clearSelection();
-      await runAction(() => window.api.deleteRecording(current.filePath, permanent));
+      reload();
     },
-    [clearSelection, current, runAction],
+    [clearSelection, reload],
+  );
+
+  const removeSelected = useCallback(
+    (permanent: boolean, paths: string[] = selected) =>
+      runOnSelection(permanent ? 'delete' : 'move to the Recycle Bin', paths, (filePath) =>
+        window.api.deleteRecording(filePath, permanent),
+      ),
+    [runOnSelection, selected],
   );
 
   const moveTo = useCallback(
-    async (filePath: string, dir: string) => {
-      clearSelection();
-      await runAction(() => window.api.moveRecording(filePath, dir));
-    },
-    [clearSelection, runAction],
+    (dir: string, paths: string[] = selected) =>
+      runOnSelection('move', paths, (filePath) => window.api.moveRecording(filePath, dir)),
+    [runOnSelection, selected],
   );
 
   const createFolder = useCallback(async () => {
@@ -349,10 +406,100 @@ export default function Library({ refreshKey }: LibraryProps): React.JSX.Element
     await runAction(() => window.api.createFolder(place, name));
   }, [newFolder, place, runAction]);
 
-  /* --- Dragging a recording onto a folder -------------------------------------
+  /** Click, ctrl-click and shift-click, as every file list has worked for years. */
+  const clickTile = useCallback(
+    (e: React.MouseEvent, filePath: string) => {
+      setConfirmingPermanent(false);
+      if (e.shiftKey && anchor) {
+        const from = files.findIndex((f) => f.filePath === anchor);
+        const to = files.findIndex((f) => f.filePath === filePath);
+        if (from !== -1 && to !== -1) {
+          const [lo, hi] = from < to ? [from, to] : [to, from];
+          setSelected(files.slice(lo, hi + 1).map((f) => f.filePath));
+          return;
+        }
+      }
+      if (e.ctrlKey || e.metaKey) {
+        setSelected((s) => (s.includes(filePath) ? s.filter((p) => p !== filePath) : [...s, filePath]));
+        setAnchor(filePath);
+        return;
+      }
+      setSelected([filePath]);
+      setAnchor(filePath);
+    },
+    [anchor, files],
+  );
+
+  // Escape clears, Ctrl+A takes the folder. Delete is deliberately not bound:
+  // recoverable or not, a stray keypress should not empty a folder.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        setMenu(null);
+        setSelected([]);
+        setConfirmingPermanent(false);
+        setConfirmingFolder(null);
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+        const target = e.target as HTMLElement | null;
+        // Not while typing a folder name.
+        if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA') return;
+        e.preventDefault();
+        setSelected(files.map((f) => f.filePath));
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [files]);
+
+  // A menu that survives a click elsewhere, a scroll or a resize is a menu
+  // pointing at something that has moved.
+  useEffect(() => {
+    if (!menu) return undefined;
+    const close = (): void => setMenu(null);
+    window.addEventListener('mousedown', close);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    window.addEventListener('blur', close);
+    return () => {
+      window.removeEventListener('mousedown', close);
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+      window.removeEventListener('blur', close);
+    };
+  }, [menu]);
+
+  const openMenu = useCallback(
+    (e: React.MouseEvent, kind: MenuState['kind'], target: string) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setMenu({ x: e.clientX, y: e.clientY, kind, target });
+    },
+    [],
+  );
+
+  /**
+   * Keep the menu inside the window.
+   *
+   * Measured rather than estimated: how tall it is depends on how many folders
+   * there are to move into, and a guessed height put it off the bottom edge
+   * exactly when the list was long enough to be worth right-clicking. A layout
+   * effect runs before paint, so the corrected position is the first one drawn.
+   */
+  useLayoutEffect(() => {
+    const el = menuRef.current;
+    if (!menu || !el) return;
+    const box = el.getBoundingClientRect();
+    const margin = 8;
+    el.style.left = `${Math.max(margin, Math.min(menu.x, window.innerWidth - box.width - margin))}px`;
+    el.style.top = `${Math.max(margin, Math.min(menu.y, window.innerHeight - box.height - margin))}px`;
+  }, [menu]);
+
+  /* --- Dragging recordings onto folders ---------------------------------------
    * The same move as the menu, reached the way a file manager would do it. Every
    * drop target is a folder path, so the crumb trail works as one too: dragging
-   * onto "Recordings" moves something back out of a subfolder. */
+   * onto the first crumb moves a recording back out of a subfolder. */
 
   const dropProps = useCallback(
     (dir: string) => ({
@@ -367,8 +514,10 @@ export default function Library({ refreshKey }: LibraryProps): React.JSX.Element
       onDrop: (e: React.DragEvent) => {
         e.preventDefault();
         setDropTarget(null);
-        const filePath = e.dataTransfer.getData(DRAG_TYPE);
-        if (filePath) void moveTo(filePath, dir);
+        const raw = e.dataTransfer.getData(DRAG_TYPE);
+        if (!raw) return;
+        const paths = JSON.parse(raw) as string[];
+        if (paths.length > 0) void moveTo(dir, paths);
       },
     }),
     [moveTo],
@@ -377,9 +526,23 @@ export default function Library({ refreshKey }: LibraryProps): React.JSX.Element
   if (listing === null) return <section className="library" aria-busy="true" />;
 
   const crumbs = place === '' ? [] : place.split('/');
+  const moveTargets = [
+    ...(place === '' ? [] : [{ path: '', label: rootName }]),
+    ...folders.filter((f) => f.path !== place).map((f) => ({ path: f.path, label: f.path })),
+  ];
 
   return (
-    <section className="library">
+    <section
+      className="library"
+      onContextMenu={(e) => openMenu(e, 'background', '')}
+      onClick={(e) => {
+        // A click on the background, not on a tile, means "never mind".
+        if (e.target === e.currentTarget) {
+          setSelected([]);
+          setAnchor(null);
+        }
+      }}
+    >
       <div className="browser">
         <div className="browser__nav">
           <button
@@ -493,113 +656,144 @@ export default function Library({ refreshKey }: LibraryProps): React.JSX.Element
         </form>
       )}
 
+      {/* Sticky, because the actions belong to the selection and the selection
+          can be at the bottom of a long folder. Scrolling back up to reach a
+          button is the kind of small tax that makes a list annoying to use. */}
+      {picked.length > 0 && (
+        <div className="actions" role="toolbar" aria-label="What to do with the selection">
+          <span className="actions__count">
+            {picked.length} selected
+            <span className="actions__size">
+              {formatSize(picked.reduce((n, f) => n + f.sizeBytes, 0))}
+            </span>
+          </span>
+
+          {one && (
+            <button
+              type="button"
+              className="actions__item"
+              onClick={() => setPlaying(playing === one.filePath ? null : one.filePath)}
+            >
+              {playing === one.filePath ? <CloseIcon /> : <PlayIcon />}
+              {playing === one.filePath ? 'Close' : 'Play'}
+            </button>
+          )}
+
+          <label className="actions__item actions__move">
+            <MoveIcon />
+            Move to
+            <select
+              className="actions__select"
+              value=""
+              aria-label={`Move ${picked.length} recordings to a folder`}
+              onChange={(e) => {
+                if (e.target.value === '') return;
+                void moveTo(e.target.value === '/' ? '' : e.target.value);
+              }}
+            >
+              <option value="">Folder…</option>
+              {moveTargets.map((t) => (
+                <option key={t.path} value={t.path === '' ? '/' : t.path}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {one && (
+            <button
+              type="button"
+              className="actions__item"
+              onClick={() => void runAction(() => window.api.openRecordingExternally(one.filePath))}
+            >
+              <ExternalIcon />
+              Open
+            </button>
+          )}
+
+          {one && (
+            <button
+              type="button"
+              className="actions__item"
+              onClick={() => void runAction(() => window.api.revealRecording(one.filePath))}
+            >
+              <FolderIcon />
+              In folder
+            </button>
+          )}
+
+          <button
+            type="button"
+            className="actions__item"
+            onClick={() => void removeSelected(false)}
+          >
+            <TrashIcon />
+            Recycle Bin
+          </button>
+
+          <button
+            type="button"
+            className={`actions__item actions__item--danger ${confirmingPermanent ? 'is-confirming' : ''}`}
+            onClick={() => {
+              if (confirmingPermanent) void removeSelected(true);
+              else setConfirmingPermanent(true);
+            }}
+            onBlur={() => setConfirmingPermanent(false)}
+          >
+            <TrashIcon />
+            {confirmingPermanent ? 'Confirm — cannot be undone' : 'Delete'}
+          </button>
+
+          <button
+            type="button"
+            className="actions__clear"
+            onClick={() => {
+              setSelected([]);
+              setAnchor(null);
+            }}
+            title="Clear the selection"
+            aria-label="Clear the selection"
+          >
+            <CloseIcon />
+          </button>
+        </div>
+      )}
+
       {error && (
         <p className="library__error" role="alert">
           {error}
         </p>
       )}
 
-      {/* What can be done with the selected recording. The video appears only
-          once it has been opened, so picking something never starts playback. */}
-      {current && (
+      {playingItem && (
         <div className="player">
-          {playing === current.filePath && (
-            <>
-              {/* Custom protocol, never file:// -- the CSP forbids it. */}
-              <video
-                key={current.filePath}
-                ref={playerRef}
-                className="player__video"
-                src={current.playbackUrl}
-                controls
-                autoPlay
-                onLoadedMetadata={(e) => setUnindexed(!Number.isFinite(e.currentTarget.duration))}
-                onError={() =>
-                  setError(`${current.fileName} could not be played. It may have been moved.`)
-                }
-              />
-              {/* Recordings made before the finalize step carry no duration and no
-                  seek index, so the browser reports Infinity and the scrubber is
-                  meaningless. Say so, rather than let it look like a live bug. */}
-              {unindexed && (
-                <p className="player__note">
-                  This recording was saved before seeking was fixed, so its length is unknown and
-                  the scrubber will not work. New recordings seek normally.
-                </p>
-              )}
-            </>
+          {/* Custom protocol, never file:// -- the CSP forbids it. */}
+          <video
+            key={playingItem.filePath}
+            ref={playerRef}
+            className="player__video"
+            src={playingItem.playbackUrl}
+            controls
+            autoPlay
+            onLoadedMetadata={(e) => setUnindexed(!Number.isFinite(e.currentTarget.duration))}
+            onError={() =>
+              setError(`${playingItem.fileName} could not be played. It may have been moved.`)
+            }
+          />
+          {/* Recordings made before the finalize step carry no duration and no
+              seek index, so the browser reports Infinity and the scrubber is
+              meaningless. Say so, rather than let it look like a live bug. */}
+          {unindexed && (
+            <p className="player__note">
+              This recording was saved before seeking was fixed, so its length is unknown and the
+              scrubber will not work. New recordings seek normally.
+            </p>
           )}
           <div className="player__bar">
-            <span className="player__name">{current.fileName}</span>
-            <div className="player__actions">
-              {playing === current.filePath ? (
-                <button type="button" className="link" onClick={() => setPlaying(null)}>
-                  Close player
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="link"
-                  onClick={() => setPlaying(current.filePath)}
-                >
-                  Play
-                </button>
-              )}
-              {/* Moving is a menu as well as a drag: a drag needs the folder on
-                  screen, and the one you want is often not the one you are in. */}
-              <label className="moveTo">
-                Move to
-                <select
-                  className="moveTo__select"
-                  value=""
-                  onChange={(e) => {
-                    const target = e.target.value;
-                    if (target === '') return;
-                    void moveTo(current.filePath, target === '/' ? '' : target);
-                  }}
-                >
-                  <option value="">Choose a folder…</option>
-                  {place !== '' && <option value="/">{rootName}</option>}
-                  {folders
-                    .filter((f) => f.path !== place)
-                    .map((f) => (
-                      <option key={f.path} value={f.path}>
-                        {f.path}
-                      </option>
-                    ))}
-                </select>
-              </label>
-              <button
-                type="button"
-                className="link"
-                onClick={() =>
-                  void runAction(() => window.api.openRecordingExternally(current.filePath))
-                }
-              >
-                Open in player
-              </button>
-              <button
-                type="button"
-                className="link"
-                onClick={() => void runAction(() => window.api.revealRecording(current.filePath))}
-              >
-                Show in folder
-              </button>
-              <button type="button" className="link" onClick={() => void remove(false)}>
-                Move to Recycle Bin
-              </button>
-              <button
-                type="button"
-                className={`link link--danger ${confirmingPermanent ? 'is-confirming' : ''}`}
-                onClick={() => {
-                  if (confirmingPermanent) void remove(true);
-                  else setConfirmingPermanent(true);
-                }}
-                onBlur={() => setConfirmingPermanent(false)}
-              >
-                {confirmingPermanent ? 'Confirm — this cannot be undone' : 'Delete permanently'}
-              </button>
-            </div>
+            <span className="player__name">{playingItem.fileName}</span>
+            <button type="button" className="link" onClick={() => setPlaying(null)}>
+              Close player
+            </button>
           </div>
         </div>
       )}
@@ -610,6 +804,7 @@ export default function Library({ refreshKey }: LibraryProps): React.JSX.Element
             <li
               key={folder.path}
               className={`folderCell ${dropTarget === folder.path ? 'is-dropTarget' : ''}`}
+              onContextMenu={(e) => openMenu(e, 'folder', folder.path)}
               {...dropProps(folder.path)}
             >
               <button type="button" className="folder" onClick={() => go(folder.path)}>
@@ -667,28 +862,42 @@ export default function Library({ refreshKey }: LibraryProps): React.JSX.Element
         <ul className="tiles">
           {listing.files.map((item) => {
             const dur = durations[item.filePath];
+            const isChosen = chosen.has(item.filePath);
             return (
               <li key={item.filePath} ref={(el) => observe(item.filePath, el)}>
                 <button
                   type="button"
-                  className={`tile ${selected === item.filePath ? 'is-selected' : ''}`}
+                  className={`tile ${isChosen ? 'is-selected' : ''}`}
                   draggable
                   onDragStart={(e) => {
-                    e.dataTransfer.setData(DRAG_TYPE, item.filePath);
+                    // Dragging something already selected takes the whole
+                    // selection; dragging anything else takes just that one.
+                    const paths = isChosen ? selected : [item.filePath];
+                    if (!isChosen) {
+                      setSelected([item.filePath]);
+                      setAnchor(item.filePath);
+                    }
+                    e.dataTransfer.setData(DRAG_TYPE, JSON.stringify(paths));
                     e.dataTransfer.effectAllowed = 'move';
-                    setSelected(item.filePath);
                   }}
                   onDragEnd={() => setDropTarget(null)}
-                  onClick={() => {
-                    setSelected(item.filePath);
-                    setConfirmingPermanent(false);
-                  }}
+                  onClick={(e) => clickTile(e, item.filePath)}
                   onDoubleClick={() => {
-                    setSelected(item.filePath);
+                    setSelected([item.filePath]);
+                    setAnchor(item.filePath);
                     setPlaying(item.filePath);
                   }}
-                  aria-pressed={selected === item.filePath}
-                  title="Click to select, double-click to play"
+                  onContextMenu={(e) => {
+                    // Right-clicking outside the selection moves it here first,
+                    // so the menu always acts on what is highlighted.
+                    if (!isChosen) {
+                      setSelected([item.filePath]);
+                      setAnchor(item.filePath);
+                    }
+                    openMenu(e, 'recording', item.filePath);
+                  }}
+                  aria-pressed={isChosen}
+                  title="Click to select, double-click to play, right-click for more"
                 >
                   {/* The placeholder keeps its size when no image exists, so
                       tiles never reflow as thumbnails arrive. */}
@@ -714,6 +923,195 @@ export default function Library({ refreshKey }: LibraryProps): React.JSX.Element
             );
           })}
         </ul>
+      )}
+
+      {menu && (
+        <div
+          className="menu"
+          ref={menuRef}
+          style={{ left: menu.x, top: menu.y }}
+          role="menu"
+          // The window-level mousedown listener closes this; clicks inside it
+          // must not travel there before the item they landed on runs.
+          onMouseDown={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          {menu.kind === 'recording' && (
+            <>
+              <p className="menu__title">
+                {picked.length > 1 ? `${picked.length} recordings` : fileNameOf(menu.target)}
+              </p>
+              {one && (
+                <button
+                  type="button"
+                  className="menu__item"
+                  onClick={() => {
+                    setPlaying(one.filePath);
+                    setMenu(null);
+                  }}
+                >
+                  <PlayIcon />
+                  Play here
+                </button>
+              )}
+              {one && (
+                <button
+                  type="button"
+                  className="menu__item"
+                  onClick={() => {
+                    setMenu(null);
+                    void runAction(() => window.api.openRecordingExternally(one.filePath));
+                  }}
+                >
+                  <ExternalIcon />
+                  Open in your player
+                </button>
+              )}
+              {one && (
+                <button
+                  type="button"
+                  className="menu__item"
+                  onClick={() => {
+                    setMenu(null);
+                    void runAction(() => window.api.revealRecording(one.filePath));
+                  }}
+                >
+                  <FolderIcon />
+                  Show in Explorer
+                </button>
+              )}
+
+              {moveTargets.length > 0 && (
+                <>
+                  <p className="menu__label">Move to</p>
+                  <div className="menu__scroll">
+                    {moveTargets.map((t) => (
+                      <button
+                        key={t.path}
+                        type="button"
+                        className="menu__item"
+                        onClick={() => void moveTo(t.path)}
+                      >
+                        <MoveIcon />
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              <div className="menu__rule" />
+              <button
+                type="button"
+                className="menu__item"
+                onClick={() => void removeSelected(false)}
+              >
+                <TrashIcon />
+                Move to Recycle Bin
+              </button>
+              <button
+                type="button"
+                className={`menu__item menu__item--danger ${confirmingPermanent ? 'is-confirming' : ''}`}
+                onClick={() => {
+                  if (confirmingPermanent) void removeSelected(true);
+                  else setConfirmingPermanent(true);
+                }}
+              >
+                <TrashIcon />
+                {confirmingPermanent ? 'Confirm — cannot be undone' : 'Delete permanently'}
+              </button>
+            </>
+          )}
+
+          {menu.kind === 'folder' && (
+            <>
+              <p className="menu__title">{menu.target.split('/').pop()}</p>
+              <button
+                type="button"
+                className="menu__item"
+                onClick={() => {
+                  const target = menu.target;
+                  setMenu(null);
+                  go(target);
+                }}
+              >
+                <FolderIcon />
+                Open
+              </button>
+              <button
+                type="button"
+                className="menu__item"
+                onClick={() => {
+                  const target = menu.target;
+                  setMenu(null);
+                  void runAction(() => window.api.revealFolder(target));
+                }}
+              >
+                <ExternalIcon />
+                Show in Explorer
+              </button>
+              <div className="menu__rule" />
+              <button
+                type="button"
+                className={`menu__item menu__item--danger ${confirmingFolder === menu.target ? 'is-confirming' : ''}`}
+                onClick={() => {
+                  if (confirmingFolder === menu.target) {
+                    const target = menu.target;
+                    setConfirmingFolder(null);
+                    setMenu(null);
+                    void runAction(() => window.api.deleteFolder(target));
+                  } else {
+                    setConfirmingFolder(menu.target);
+                  }
+                }}
+              >
+                <TrashIcon />
+                {confirmingFolder === menu.target
+                  ? 'Confirm — folder and contents'
+                  : 'Delete folder'}
+              </button>
+            </>
+          )}
+
+          {menu.kind === 'background' && (
+            <>
+              <button
+                type="button"
+                className="menu__item"
+                onClick={() => {
+                  setMenu(null);
+                  setNewFolder('');
+                }}
+              >
+                <FolderPlusIcon />
+                New folder
+              </button>
+              <button
+                type="button"
+                className="menu__item"
+                disabled={files.length === 0}
+                onClick={() => {
+                  setSelected(files.map((f) => f.filePath));
+                  setMenu(null);
+                }}
+              >
+                <CheckIcon />
+                Select all
+              </button>
+              <button
+                type="button"
+                className="menu__item"
+                onClick={() => {
+                  setMenu(null);
+                  void runAction(() => window.api.revealFolder(place));
+                }}
+              >
+                <ExternalIcon />
+                Open in Explorer
+              </button>
+            </>
+          )}
+        </div>
       )}
     </section>
   );

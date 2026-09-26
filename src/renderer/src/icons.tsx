@@ -201,3 +201,25 @@ export function TrashIcon(): React.JSX.Element {
     </svg>
   );
 }
+
+/** Open elsewhere: a box with an arrow leaving it. */
+export function ExternalIcon(): React.JSX.Element {
+  return (
+    <svg {...base}>
+      <path d="M11 4h5v5" />
+      <path d="M16 4 9.5 10.5" />
+      <path d="M15 12.5V15a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 15V6.5A1.5 1.5 0 0 1 5 5h2.5" />
+    </svg>
+  );
+}
+
+/** Move into a folder: the folder, with something going in. */
+export function MoveIcon(): React.JSX.Element {
+  return (
+    <svg {...base}>
+      <path d="M2.5 7.5V5.25A1.25 1.25 0 0 1 3.75 4h2.6c.4 0 .78.19 1.01.51l.74 1.02" />
+      <path d="M2.5 7.25h15v8A1.25 1.25 0 0 1 16.25 16.5h-12.5A1.25 1.25 0 0 1 2.5 15.25z" />
+      <path d="M10 8.75v4M8 10.9l2 2 2-2" />
+    </svg>
+  );
+}
