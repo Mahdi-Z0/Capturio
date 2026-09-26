@@ -124,10 +124,10 @@ Resume file: `.paul/phases/07-library-and-window-ux/07-01-SUMMARY.md`
 
 **Repository:** `https://github.com/Mahdi-Z0/Capturio.git`, branch `main`.
 
-**Unpushed:** as of this update, 9 commits are committed locally and **not pushed** — `2f978f7`,
-`78bdecf`, `3e26928`, `29a4dc8`, `23a0ba2`, `8876027`, `8ecbf58`, `32d4d62`, `cc82af5`. The user has
-not authorised a push. **Ask before pushing** (a project rule in `CLAUDE.md`, and it has been broken
-once — `058906d` was pushed unprompted).
+**Unpushed:** everything after `058906d`, which is the last commit on `origin/main`. Ask git rather
+than trusting this line: `git log --oneline origin/main..HEAD` — it was **10 commits** when this was
+written. The user has not authorised a push. **Ask before pushing** (a project rule in `CLAUDE.md`,
+and it has been broken once — `058906d` itself was pushed unprompted).
 
 **The user's recordings folder is `C:\Users\master\Videos\ScreenRecorder`** (the pre-rename name, kept
 deliberately). It holds their own recordings, including a folder they made called `Mine`. Never delete
