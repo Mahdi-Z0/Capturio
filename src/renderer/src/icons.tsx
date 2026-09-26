@@ -125,3 +125,12 @@ export function CloseIcon(): React.JSX.Element {
     </svg>
   );
 }
+
+/** The record dot, matching the bar's one bold element and the app's own mark. */
+export function RecordIcon(): React.JSX.Element {
+  return (
+    <svg {...base} stroke="none">
+      <circle cx="10" cy="10" r="6" fill="#ff4d4d" />
+    </svg>
+  );
+}

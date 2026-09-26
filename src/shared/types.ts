@@ -336,6 +336,8 @@ export interface RecorderApi {
   /** Open the log file in whatever the system uses for text. */
   openLog(): Promise<void>;
 
+  /** Bring the control bar back and focus it. */
+  showBar(): Promise<void>;
   /** Hide the bar. It comes back from the tray icon. */
   hideBar(): Promise<void>;
   /** Quit outright. Offered from the tray, not the bar. */

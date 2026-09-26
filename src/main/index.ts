@@ -709,6 +709,17 @@ function registerIpc(): void {
     if (p) await shell.openPath(p);
   });
 
+  ipcMain.handle('bar:show', (): void => {
+    // The way back from the recordings window. Without it, browsing recordings
+    // was a dead end: nothing on screen led back to recording.
+    if (!barWindow || barWindow.isDestroyed()) createBar();
+    else {
+      barWindow.show();
+      barWindow.focus();
+    }
+    trayRefresh?.();
+  });
+
   ipcMain.handle('bar:hide', (): void => {
     barWindow?.hide();
     trayRefresh?.();

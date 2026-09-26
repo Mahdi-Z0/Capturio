@@ -82,6 +82,7 @@ const api = {
   },
   openLog: (): Promise<void> => ipcRenderer.invoke('log:open'),
 
+  showBar: (): Promise<void> => ipcRenderer.invoke('bar:show'),
   hideBar: (): Promise<void> => ipcRenderer.invoke('bar:hide'),
   quitApp: (): Promise<void> => ipcRenderer.invoke('app:quit'),
 

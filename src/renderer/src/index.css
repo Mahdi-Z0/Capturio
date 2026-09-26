@@ -726,3 +726,44 @@ body {
   padding-top: 20px;
   gap: 14px;
 }
+
+/* Header of the recordings window: what this window is, and the way back. */
+.libraryBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  max-width: 900px;
+}
+
+.libraryBar__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.recordBack {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px 7px 10px;
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.recordBack:hover {
+  border-color: var(--live);
+  background: var(--raised);
+}
+
+.recordBack:focus-visible {
+  outline: 2px solid #6f8cff;
+  outline-offset: 2px;
+}
