@@ -12,8 +12,8 @@ exist and `Videos/ScreenRecorder` does — renaming the app must never orphan re
 ## Status
 
 **Working:** full-screen, single-window and region capture to disk, quality presets, system (loopback) audio, the recordings
-library (browse by folder, play, reveal, move, delete), user-made subfolders, crash recovery of
-`.part` files, seekable output, and pause/resume and mute while recording.
+window (browse by folder, play, reveal, move, delete, plus Settings and Help), user-made subfolders,
+crash recovery of `.part` files, seekable output, and pause/resume and mute while recording.
 
 The app **is** a floating control bar, not a window someone visits. Recording never requires opening
 anything.
@@ -394,6 +394,32 @@ not dismissed`. An effect that copied it into state would trip `react-hooks/set-
 conditional returned the bare `BAR_HEIGHT` whenever no panel was showing, which would have clipped
 this card.
 
+## Three views, and what belongs where
+
+The recordings window has **Recordings / Settings / Help** and nothing else. The split is by *when*
+something is touched, not by category:
+
+- **The bar** keeps what changes while recording — the source, the two sound switches, pause, mute,
+  stop. Those must be one click and must not need a window.
+- **Settings** holds what is set once and left: quality, which microphone, and where recordings go.
+  Quality and the mic picker used to be an inline panel on the bar; a floating strip is a poor place
+  for a list of radio buttons, and the bar's settings button now opens this view instead. There is
+  **one** copy of each control, never one here and one on the bar.
+- **Help** is the key to the bar, drawn with the same icons so it reads as a legend for what is on
+  screen rather than a manual written about it.
+
+**Launch is still bar only.** This window is never opened on startup, on first run or otherwise.
+
+**The library stays mounted while another view shows** (`.is-hidden`, not unmounted): it holds a
+folder, a selection and a player, and losing those on a trip to Settings is its own small annoyance.
+
+**`tellLibrary()` is how main talks to this window**, for the view and for "show me this recording"
+alike. A window being created cannot be told anything — the renderer's listener does not exist until
+React has mounted — so each message is *held* for collection on mount (`library:take-pending`,
+`library:take-pending-tab`) and only sent as an event when a loaded window is already listening.
+`library:reveal` sends the tab too: the window may have been left on Settings, where selecting a file
+would be invisible.
+
 ## Thumbnails, and why the protocol allows reading
 
 Tile images are cached under `userData/thumbnails`, keyed by name + size + mtime, so replacing a
@@ -448,6 +474,9 @@ Ask Windows instead — `IsWindowVisible` over `EnumWindows`, matched by window 
 
 Ctrl+Shift+R starts and stops. The bar decides what `toggle` means, since only it knows what is
 currently selected.
+
+**The bar has one panel left** (the window picker). Quality and the microphone moved to the window's
+Settings view, so `Panel` is `'none' | 'window'`.
 
 **Sound is two switches, not four modes.** The speaker and microphone buttons are independent; their
 combinations are the four `AudioMode` values. Do not put a four-item list back in the UI — the modes

@@ -1,17 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRecorder } from './useRecorder.js';
 import WindowPicker from './WindowPicker.js';
-import MicPicker from './MicPicker.js';
 import {
   AUDIO_MODES,
   DEFAULT_AUDIO_MODE,
-  DEFAULT_QUALITY,
-  QUALITY_PRESETS,
   LOW_SPACE_BYTES,
   SCREEN_TARGET,
   type AudioMode,
   type CaptureTarget,
-  type QualityPreset,
   type Recording,
   type RegionRect,
 } from '../../shared/types.js';
@@ -47,7 +43,7 @@ function modeFrom(system: boolean, microphone: boolean): AudioMode {
   return 'none';
 }
 
-type Panel = 'none' | 'window' | 'settings';
+type Panel = 'none' | 'window';
 type SourceKind = 'screen' | 'window' | 'region';
 
 const BAR_HEIGHT = 64;
@@ -87,7 +83,6 @@ export default function Bar(): React.JSX.Element {
   const [windowTarget, setWindowTarget] = useState<CaptureTarget | null>(null);
   const [region, setRegion] = useState<RegionRect | null>(null);
   const [audio, setAudio] = useState<AudioMode>(DEFAULT_AUDIO_MODE);
-  const [quality, setQuality] = useState<QualityPreset>(DEFAULT_QUALITY);
   const [panel, setPanel] = useState<Panel>('none');
   const [lowSpace, setLowSpace] = useState<number | null>(null);
   // `lastSaved` never clears, so the card is derived from it plus the one thing
@@ -106,10 +101,6 @@ export default function Bar(): React.JSX.Element {
     window.api
       .getAudioMode()
       .then(setAudio)
-      .catch(() => undefined);
-    window.api
-      .getQuality()
-      .then(setQuality)
       .catch(() => undefined);
 
     // Checked when the bar appears and after each recording, not on a timer: a
@@ -222,7 +213,7 @@ export default function Bar(): React.JSX.Element {
     // the shell taller too, and a window shorter than its content clips them.
     const height = Math.max(BAR_HEIGHT, shellRef.current?.scrollHeight ?? BAR_HEIGHT);
     window.api.resizeBar(Math.ceil(height));
-  }, [openPanel, source, windowTarget, audio, quality, recording, note, savedCard]);
+  }, [openPanel, source, windowTarget, audio, recording, note, savedCard]);
 
   return (
     <div className="barShell" ref={shellRef}>
@@ -338,11 +329,10 @@ export default function Bar(): React.JSX.Element {
             <div className="bar__group bar__group--end">
               <button
                 type="button"
-                className={`icon ${openPanel === 'settings' ? 'is-on' : ''}`}
-                onClick={() => setPanel(openPanel === 'settings' ? 'none' : 'settings')}
+                className="icon"
+                onClick={() => void window.api.openLibraryAt('settings').catch(() => undefined)}
                 title="Settings"
                 aria-label="Settings"
-                aria-expanded={openPanel === 'settings'}
               >
                 <SlidersIcon />
               </button>
@@ -432,38 +422,6 @@ export default function Bar(): React.JSX.Element {
         </div>
       )}
 
-      {openPanel === 'settings' && (
-        <div className="panel">
-          <fieldset className="picker picker--quality">
-            <legend className="picker__legend">Quality</legend>
-            <div className="picker__options">
-              {(['balanced', 'high', 'maximum'] as QualityPreset[]).map((key) => {
-                const p = QUALITY_PRESETS[key];
-                return (
-                  <label
-                    key={key}
-                    className={`picker__option ${quality === key ? 'is-selected' : ''}`}
-                  >
-                    <input
-                      type="radio"
-                      name="quality"
-                      value={key}
-                      checked={quality === key}
-                      onChange={() => {
-                        setQuality(key);
-                        void window.api.setQuality(key).catch(() => undefined);
-                      }}
-                    />
-                    <span className="picker__name">{p.label}</span>
-                    <span className="picker__note">{p.blurb}</span>
-                  </label>
-                );
-              })}
-            </div>
-          </fieldset>
-          {spec.microphone && <MicPicker disabled={false} />}
-        </div>
-      )}
     </div>
   );
 }

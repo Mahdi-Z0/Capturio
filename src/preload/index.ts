@@ -13,6 +13,7 @@ import type {
   FolderEntry,
   FolderListing,
   RevealRequest,
+  LibraryTab,
 } from '../shared/types.js';
 
 /**
@@ -92,6 +93,14 @@ const api = {
   openLibrary: (): Promise<void> => ipcRenderer.invoke('library:open'),
   revealInLibrary: (filePath: string, play: boolean): Promise<void> =>
     ipcRenderer.invoke('library:reveal', filePath, play),
+  openLibraryAt: (tab: LibraryTab): Promise<void> => ipcRenderer.invoke('library:open-at', tab),
+  takePendingTab: (): Promise<LibraryTab | null> =>
+    ipcRenderer.invoke('library:take-pending-tab'),
+  onLibraryTab: (handler: (tab: LibraryTab) => void): (() => void) => {
+    const listener = (_e: unknown, tab: LibraryTab): void => handler(tab);
+    ipcRenderer.on('library:tab', listener);
+    return () => ipcRenderer.removeListener('library:tab', listener);
+  },
   takePendingReveal: (): Promise<RevealRequest | null> =>
     ipcRenderer.invoke('library:take-pending'),
   onShowRecording: (handler: (request: RevealRequest) => void): (() => void) => {

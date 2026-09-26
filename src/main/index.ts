@@ -47,6 +47,7 @@ import type {
   FolderEntry,
   FolderListing,
   RevealRequest,
+  LibraryTab,
 } from '../shared/types.js';
 import {
   DEFAULT_AUDIO_MODE,
@@ -851,15 +852,22 @@ function registerIpc(): void {
   ipcMain.handle('library:reveal', (_e, filePath: unknown, play: unknown): void => {
     const target = resolveInsideRecordings('library:reveal', filePath);
     const request: RevealRequest = { relativePath: relativeOf(target), play: play === true };
-    const ready =
-      libraryWindow && !libraryWindow.isDestroyed() && !libraryWindow.webContents.isLoading();
-    openLibrary();
-    if (ready && libraryWindow) {
-      libraryWindow.webContents.send('library:show', request);
-      pendingReveal = null;
-    } else {
-      pendingReveal = request;
-    }
+    // The recordings view as well as the recording: the window may have been
+    // left on Settings, where selecting a file would be invisible.
+    tellLibrary('library:tab', 'recordings' as LibraryTab, (held) => (pendingTab = held));
+    tellLibrary('library:show', request, (held) => (pendingReveal = held));
+  });
+
+  ipcMain.handle('library:open-at', (_e, tab: unknown): void => {
+    const wanted: LibraryTab =
+      tab === 'settings' || tab === 'help' || tab === 'recordings' ? tab : 'recordings';
+    tellLibrary('library:tab', wanted, (held) => (pendingTab = held));
+  });
+
+  ipcMain.handle('library:take-pending-tab', (): LibraryTab | null => {
+    const tab = pendingTab;
+    pendingTab = null;
+    return tab;
   });
 
   ipcMain.handle('library:take-pending', (): RevealRequest | null => {
@@ -1662,6 +1670,27 @@ let libraryWindow: BrowserWindow | null = null;
  * goes nowhere.
  */
 let pendingReveal: RevealRequest | null = null;
+let pendingTab: LibraryTab | null = null;
+
+/**
+ * Say something to the recordings window, opening it if it is not there.
+ *
+ * A window being created cannot be told anything: the renderer's listener does
+ * not exist until React has mounted, and `did-finish-load` is no guarantee of
+ * that. So the message is *held* for the window to collect on mount, and only
+ * sent as an event when a loaded window is already listening.
+ */
+function tellLibrary<T>(channel: string, payload: T, hold: (held: T | null) => void): void {
+  const listening =
+    libraryWindow && !libraryWindow.isDestroyed() && !libraryWindow.webContents.isLoading();
+  openLibrary();
+  if (listening && libraryWindow) {
+    libraryWindow.webContents.send(channel, payload);
+    hold(null);
+  } else {
+    hold(payload);
+  }
+}
 
 const BAR_WIDTH = 468;
 const BAR_HEIGHT = 64;

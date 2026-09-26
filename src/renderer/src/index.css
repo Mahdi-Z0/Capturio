@@ -1205,3 +1205,174 @@ body {
   margin: 5px 7px;
   background: var(--edge);
 }
+
+/* --- The recordings window's three views --------------------------------------
+   Recordings, Settings, Help. The bar stays the app; this window holds the three
+   things that do not fit on a floating strip. */
+
+.tabs {
+  display: flex;
+  gap: 2px;
+}
+
+.tabs__tab {
+  padding: 7px 13px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+
+.tabs__tab:hover {
+  background: #22242f;
+  color: var(--ink);
+}
+
+.tabs__tab.is-current {
+  background: #272b38;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* The library stays mounted while another view is showing, so its folder,
+   selection and player survive a trip to Settings. */
+.view {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.is-hidden {
+  display: none;
+}
+
+.page {
+  width: 100%;
+  max-width: 900px;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  border-top: 1px solid var(--edge);
+  padding-top: 22px;
+}
+
+.page__group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.page__heading {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.page__note {
+  margin: 0;
+  max-width: 70ch;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink-dim);
+}
+
+.page__path {
+  margin: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: #181a22;
+  font-family: 'Cascadia Mono', Consolas, monospace;
+  font-size: 12.5px;
+  color: var(--ink);
+  word-break: break-all;
+}
+
+.page__list {
+  margin: 0;
+  padding-left: 20px;
+  max-width: 70ch;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink-dim);
+}
+
+.page__list li + li {
+  margin-top: 8px;
+}
+
+.page .link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+}
+
+.page .link:hover {
+  text-decoration: underline;
+}
+
+/* The key to the bar: the same icons, so it reads as a legend for the thing on
+   screen rather than a manual written about it. */
+.keys {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.keys__row {
+  display: grid;
+  grid-template-columns: 34px 150px 1fr;
+  align-items: baseline;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--edge);
+  font-size: 13px;
+}
+
+.keys__row:last-child {
+  border-bottom: none;
+}
+
+.keys__icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: #22242f;
+  color: var(--ink);
+  align-self: center;
+}
+
+.keys__name {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.keys__what {
+  color: var(--ink-dim);
+  line-height: 1.5;
+}
+
+.kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  border: 1px solid #3c4152;
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: #22242f;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--ink);
+}

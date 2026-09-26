@@ -106,6 +106,15 @@ export interface FolderEntry {
 }
 
 /**
+ * The views the recordings window can show.
+ *
+ * Three, and no more: what you have recorded, the handful of settings worth
+ * keeping, and an explanation of the bar. The bar remains the app — this window
+ * is where the things that do not belong on a floating strip live.
+ */
+export type LibraryTab = 'recordings' | 'settings' | 'help';
+
+/**
  * "Show me this recording": the bar's saved card asking the recordings window to
  * go to a recording, rather than handing it to Explorer or another player.
  */
@@ -381,6 +390,12 @@ export interface RecorderApi {
   resizeBar(height: number): void;
   /** Open (or focus) the recordings window. */
   openLibrary(): Promise<void>;
+  /** Open it showing a particular view. */
+  openLibraryAt(tab: LibraryTab): Promise<void>;
+  /** The window, on mount: which view was asked for before it could listen. */
+  takePendingTab(): Promise<LibraryTab | null>;
+  /** The window: a view asked for while it was already open. */
+  onLibraryTab(handler: (tab: LibraryTab) => void): () => void;
   /** Open it *at* a recording: its folder, selected, playing if asked. */
   revealInLibrary(filePath: string, play: boolean): Promise<void>;
   /**
