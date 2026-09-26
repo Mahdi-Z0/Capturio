@@ -1,5 +1,5 @@
 {
-  "_comment": "Declared feature inventory for PROGRESS.md. Weights are relative effort, not time. Update 'status' at UNIFY when a plan ships a feature; everything else is derived. Statuses: done | partial | blocked | todo",
+  "_comment": "Declared feature inventory for PROGRESS.md. Weights are relative effort, not time. Update 'status' when a plan ships a feature; everything else is derived. Statuses: done | partial | blocked | todo. Items with status todo/blocked are intentionally counted in the denominator, so the percentage reflects the product as now intended rather than as first declared.",
   "features": [
     {
       "id": "capture-fullscreen",
@@ -35,7 +35,7 @@
       "weight": 1,
       "status": "done",
       "shipped": "01-01",
-      "note": "Current behaviour \u2014 no audio track is written at all"
+      "note": "Current behaviour — no audio track is written at all"
     },
     {
       "id": "audio-system",
@@ -79,7 +79,8 @@
       "group": "Files",
       "weight": 1,
       "status": "done",
-      "shipped": "01-01"
+      "shipped": "01-01, 07-01",
+      "note": "A recording or its folder, in Explorer"
     },
     {
       "id": "library-browse",
@@ -87,8 +88,8 @@
       "group": "Files",
       "weight": 4,
       "status": "done",
-      "shipped": "02-01, 05-01, 02-02",
-      "note": "3 most recent shown, expandable; thumbnails, seekable inline playback, open in default player"
+      "shipped": "02-01, 05-01, 02-02, 07-01",
+      "note": "Folder browser: back/forward/up, breadcrumb, thumbnails, seekable inline playback"
     },
     {
       "id": "library-delete",
@@ -96,8 +97,8 @@
       "group": "Files",
       "weight": 2,
       "status": "done",
-      "shipped": "02-01",
-      "note": "Recycle Bin by default, permanent behind a two-step confirm"
+      "shipped": "02-01, 07-01",
+      "note": "Recycle Bin by default, permanent behind a two-step confirm; applies to a whole selection"
     },
     {
       "id": "quality-picker",
@@ -105,8 +106,8 @@
       "group": "Settings",
       "weight": 2,
       "status": "done",
-      "note": "Three presets, persisted in userData; Balanced states its motion cost",
-      "shipped": "01-03"
+      "note": "Three presets, persisted in userData; lives in the window’s Settings view",
+      "shipped": "01-03, 07-01"
     },
     {
       "id": "recording-indicator",
@@ -134,6 +135,93 @@
       "status": "done",
       "shipped": "05-02",
       "note": "track.enabled=false records silence; the track is never stopped"
+    },
+    {
+      "id": "folders",
+      "name": "Organise recordings into folders",
+      "group": "Files",
+      "weight": 4,
+      "status": "done",
+      "shipped": "07-01",
+      "note": "Create and delete folders, move by menu or by dragging; one validator for every path (23 refusals asserted)"
+    },
+    {
+      "id": "multi-select",
+      "name": "Act on several recordings at once",
+      "group": "Files",
+      "weight": 3,
+      "status": "done",
+      "shipped": "07-01",
+      "note": "Ctrl/shift-click and Ctrl+A; move, bin or delete the whole selection from a sticky action bar"
+    },
+    {
+      "id": "context-menus",
+      "name": "Right-click menus",
+      "group": "Files",
+      "weight": 2,
+      "status": "done",
+      "shipped": "07-01",
+      "note": "A recording, a folder, or the background. Drawn in the renderer so it can list move targets"
+    },
+    {
+      "id": "seekable",
+      "name": "Scrub through a saved recording",
+      "group": "Files",
+      "weight": 4,
+      "status": "done",
+      "shipped": "05-01",
+      "note": "Finalized after save (duration + keyframe cues) and served with Range; nothing re-encoded"
+    },
+    {
+      "id": "saved-card",
+      "name": "Say where a recording went",
+      "group": "Controls",
+      "weight": 2,
+      "status": "done",
+      "shipped": "07-01",
+      "note": "A card under the bar: Play and Show in library, both in-app. No window opens by itself"
+    },
+    {
+      "id": "window-views",
+      "name": "Settings and Help views",
+      "group": "Settings",
+      "weight": 2,
+      "status": "done",
+      "shipped": "07-01",
+      "note": "Quality, microphone and where files go; Help is a key to every button on the bar"
+    },
+    {
+      "id": "shortcut-toggle",
+      "name": "Start and stop from anywhere",
+      "group": "Controls",
+      "weight": 2,
+      "status": "done",
+      "shipped": "05-02",
+      "note": "Ctrl+Shift+R, plus the tray icon. Reports it when Windows has the combination already"
+    },
+    {
+      "id": "shortcuts-configurable",
+      "name": "Configurable global shortcuts",
+      "group": "Settings",
+      "weight": 3,
+      "status": "todo",
+      "note": "Phase 8: show the bar, and record a region immediately. Must report a registration that fails"
+    },
+    {
+      "id": "tour",
+      "name": "A short guided tour of the bar",
+      "group": "Settings",
+      "weight": 2,
+      "status": "todo",
+      "note": "Phase 8, and optional: launched from Settings/Help, never on first run. Help already covers it in prose"
+    },
+    {
+      "id": "store-package",
+      "name": "Microsoft Store package (MSIX)",
+      "group": "Shipping",
+      "weight": 3,
+      "status": "blocked",
+      "note": "Needs a Partner Center publisher identity, which only the user can obtain"
     }
   ],
   "foundation": [
@@ -176,6 +264,31 @@
       "name": "Persisted error log",
       "status": "done",
       "shipped": "2026-09-25"
+    },
+    {
+      "name": "WebM finalizer (duration + cue index, bytes untouched)",
+      "status": "done",
+      "shipped": "05-01"
+    },
+    {
+      "name": "Byte-range + CORS protocol handler",
+      "status": "done",
+      "shipped": "05-01"
+    },
+    {
+      "name": "Thumbnail cache (disposable, 64 MB cap)",
+      "status": "done",
+      "shipped": "02-02"
+    },
+    {
+      "name": "Rename to Capturio + generated multi-size icons",
+      "status": "done",
+      "shipped": "06-01"
+    },
+    {
+      "name": "Verification by driving the built app over CDP",
+      "status": "done",
+      "shipped": "07-01"
     }
   ]
 }

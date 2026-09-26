@@ -9,6 +9,21 @@ clicks. When a choice arises between "powerful" and "obvious", pick obvious.
 `screenrecorder` folder. Recordings go to `Videos/Capturio`, **except** when that folder does not
 exist and `Videos/ScreenRecorder` does — renaming the app must never orphan recordings already made.
 
+## Where the project's state is recorded
+
+This file is the **engineering knowledge base**: measurements, reversals, and the traps. It does not
+track position. For that:
+
+- `.paul/STATE.md` — where the project stands, what is next, what is deferred. Read it first when
+  resuming.
+- `.paul/ROADMAP.md` and `.paul/phases/*/**-SUMMARY.md` — the journey, phase by phase.
+- `AGENTS.md` — a five-minute orientation for anyone (or any tool) starting cold. Nothing in this file
+  is Claude-specific; `AGENTS.md` says so for agents that do not read CLAUDE.md by convention.
+- `PROGRESS.md` — generated. Edit `.paul/progress.json`, then `npm run progress`.
+
+Keep them current as part of the work, not afterwards: a stale journal is worse than none, because it
+is believed.
+
 ## Status
 
 **Working:** full-screen, single-window and region capture to disk, quality presets, system (loopback) audio, the recordings

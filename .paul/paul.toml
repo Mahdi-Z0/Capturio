@@ -1,34 +1,40 @@
-name = "ScreenRecorder"
+name = "Capturio"
 version = "0.1.0"
 status = "active"
 path = "Projects/vsc/ScreenRecorder"
-tags = []
+tags = ["electron", "windows", "screen-recorder"]
 
 [paul]
 version = "1.4.0"
 source = "https://chrisai.cv/skool"
 
 [milestone]
-name = "v0.1 Full-Screen Capture"
-version = "0.1.0"
-status = "in_progress"
-phases = 1
+name = "v0.6 A library worth using"
+version = "0.6.0"
+status = "shipped"
+phases = 7
 
 [phase]
-number = 3
-name = "Audio"
-status = "planning"
-plans_completed = 0
+number = 7
+name = "Library and window UX"
+status = "complete"
+plans_completed = 1
 
 [loop]
-position = "PLAN"
-plan = "02-02"
-plan_path = "phases/02-recordings-library/02-02-PLAN.md"
+position = "UNIFY"
+plan = "07-01"
+plan_path = "phases/07-library-and-window-ux/07-01-SUMMARY.md"
+
+[next]
+phase = 8
+name = "Shortcuts and a tour"
+status = "not_planned"
+note = "Configurable global shortcuts first; the tour may be dropped now that Help exists"
 
 [satellite]
 groom = true
 
 [stats]
-total_plans = 4
-total_phases = 2
-last_activity = "2026-09-18T09:00:00Z"
+total_plans = 13
+total_phases = 7
+last_activity = "2026-09-27T02:00:00Z"

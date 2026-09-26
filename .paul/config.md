@@ -1,13 +1,13 @@
 # Project Config
 
-**Project:** ScreenRecorder
+**Project:** Capturio (created as ScreenRecorder; renamed 2026-09-25)
 **Created:** 2026-09-16
 
 ## Project Settings
 
 ```yaml
 project:
-  name: ScreenRecorder
+  name: Capturio
   version: 0.1.0
 ```
 
@@ -18,7 +18,7 @@ project:
 ```yaml
 sonarqube:
   enabled: true
-  project_key: screenrecorder
+  project_key: capturio
 ```
 
 > **Not yet operational.** This flag is on, but SonarQube needs two things that are not installed:
@@ -50,7 +50,7 @@ To make the flag above real:
 
 1. Run a server — SonarCloud (hosted, free for public projects) or local:
    `docker run -d --name sonarqube -p 9000:9000 sonarqube:lts-community`
-2. Create a project with key `screenrecorder` and generate a user token.
+2. Create a project with key `capturio` and generate a user token.
 3. Register the SonarQube MCP server in Claude Code so `/paul:audit` can query it.
 4. Add `sonar-project.properties` to the repo root pointing at `src/`.
 
@@ -58,4 +58,4 @@ Until step 3 is done, set `enabled: false` here to avoid failed audit steps.
 
 ---
 
-_Config created: 2026-09-16_
+_Config created: 2026-09-16 — renamed to Capturio 2026-09-27_

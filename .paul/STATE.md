@@ -1,125 +1,142 @@
 ---
-description: 'ScreenRecorder — current position and accumulated context'
+description: 'Capturio — current position and accumulated context'
 type: ProjectState
-about: 'ScreenRecorder'
+about: 'Capturio'
 ---
 
 # Project State
 
+**If you are picking this project up cold, read in this order:** `AGENTS.md` (5 minutes, orientation)
+→ this file (where things stand) → `CLAUDE.md` (the engineering knowledge base; read the sections
+relevant to what you are about to touch).
+
 ## Project Reference
 
-See: .paul/PROJECT.md (updated 2026-09-16)
+See: .paul/PROJECT.md (updated 2026-09-27)
 
-**Core value:** Record any part of a Windows screen with the right audio, and find, play, or
+**Core value:** Record any part of a Windows screen with the right audio, and find, play, organise or
 delete the result without leaving the app.
-**Current focus:** v0.3 — playback correctness and recording controls
+**Current focus:** v0.7 — global shortcuts, then a short optional tour.
 
 ## Current Position
 
-Milestone: v0.3 Audio (v0.1 and v0.2 shipped)
-Phase: 5 (Playback and controls) — 05-01 and 05-02 applied, awaiting human verification
-Plan: 03-01 closed; 05-01 and 05-02 applied
-Status: APPLY complete for both, at the blocking human-verify checkpoint
-Last activity: 2026-09-18 — seekable recordings (duration + cues) and the recording indicator with
-pause/resume and mute
+Milestone: **v0.6 "A library worth using" shipped 2026-09-27.** v0.1–v0.6 all shipped.
+Phase: **7 complete.** Phase 8 (shortcuts and a tour) is next and not yet planned.
+Plan: none open. 07-01 closed.
+Status: **Feature-complete for personal use.** The installer builds and has been tested outside the
+dev setup. Every declared feature is verified against the *built* app.
+Last activity: 2026-09-27 — the recordings window gained three views (Recordings / Settings / Help),
+and the documentation was brought up to date (this update).
 
 Progress:
 
-- Features: [████████░░] 80% (37/46 pts)
-- v0.3 Audio: [██████████] 100% (none, computer, microphone, both)
+- Declared features: [██████████] 100%
+- Remaining work is **new** scope (shortcuts, tour) plus Store packaging, not unfinished scope.
 
 ## Loop Position
 
-Current loop state:
-
 ```
 PLAN ──▶ APPLY ──▶ UNIFY
-  ✓        ✓        ✓     [Plan 03-01 closed — system audio shipped]
+  —        ✓        ✓     [Phases 6 and 7 were built conversationally; SUMMARYs written at close]
 ```
+
+Phases 1–5 went through the full loop with PLAN and AUDIT files. Phases 6 and 7 did not: the user
+drove them as a running list of requests, each item verified against the built app and committed
+separately. Their SUMMARY files were written afterwards. **This is deliberate, not a gap** — but if
+the next phase is larger than a handful of requests, plan it properly.
+
+## What exists, in one screen
+
+| Area | State |
+| --- | --- |
+| Capture | Full screen, one window, dragged region. 60 fps target, ~54 delivered, `resizeMode: 'none'` |
+| Audio | None / computer / microphone / both mixed, with a device picker. Mute mid-recording |
+| Save | Streamed to a `.part` file, renamed on completion, recovered at startup after a crash |
+| Playback | Finalized after save (duration + keyframe cue index), served over `recording:` with `Range` |
+| The app | A floating bar (`#bar`), always on top, excluded from capture, resizes to its content |
+| The window | Recordings / Settings / Help. Folders, multi-select, drag-and-drop, right-click menus |
+| Packaging | `npm run dist` → per-user NSIS installer. Generated multi-size icons. Tray icon. Persisted log |
+| Verification | `npm run verify` — path guards, byte ranges, finalizer, all against the shipped modules |
 
 ## Accumulated Context
 
 ### Decisions
 
-| Decision                                 | Phase | Impact                                                          |
-| ---------------------------------------- | ----- | --------------------------------------------------------------- |
-| Electron + React + TS via electron-vite   | Init  | Sets the whole architecture; system-audio loopback works natively |
-| Main/preload are CommonJS                 | Init  | Do not add `"type": "module"` without re-verifying the app opens  |
-| TypeScript pinned to 5.9.3                | Init  | Bumping it silently kills language-server diagnostics             |
-| MS Store deferred                         | Init  | Only binding rule: never write user data beside the executable     |
-| Library reads folder on demand            | Init  | No index file; removes a whole class of sync bugs                  |
-| 2026-09-18: 03-01 shipped system audio; picker CSS generalised rather than copied | Phase 3 | `.quality__*` became a shared `.picker__*` block used by both controls. A copied second style would have drifted; the audio control also now has a shape that absorbs 03-02's two extra options |
-| 2026-09-18: Enterprise audit on 02-02-PLAN.md. Applied 3 must-have, 5 strongly-recommended. Deferred 5. Verdict: conditionally acceptable | Phase 2 | Caught that `verify-guards.cjs` would have reimplemented the validation it tests — a green test of a copy, ending three plans of unverified guards with a false claim rather than a real one |
-| 2026-09-17: CSP boundary stop resolved. Added `recording:` to `media-src` with user authorisation | Phase 2 | `'self'` does not cover a custom scheme, so the protocol handler alone could not play anything. Measured alternatives: blob: would load whole recordings into memory (~750 MB for 5 min), undoing 01-01's streaming design. `file:` stays forbidden |
-| 2026-09-17: Enterprise audit on 02-01-PLAN.md. Applied 3 must-have, 5 strongly-recommended. Deferred 5. Verdict: conditionally acceptable | Phase 2 | First plan that deletes user files and serves bytes to the renderer. Caught that a failed Recycle Bin move would naturally fall back to permanent deletion, and that the protocol handler's path derivation was unspecified |
-| 2026-09-17: Enterprise audit on 01-03-PLAN.md. Applied 3 must-have, 6 strongly-recommended. Deferred 5. Verdict: conditionally acceptable | Phase 1 | Caught that the Balanced preset would ship the fixed judder behind a "smaller files" label, and that AC-6's memory sampling could not identify the right process |
-| 2026-09-17: Enterprise audit on 01-02-PLAN.md. Applied 4 must-have, 5 strongly-recommended. Deferred 5. Verdict: conditionally acceptable | Phase 1 | Measurement now has decision rules, per-window statistics and baseline control — a research plan's failure mode is a false conclusion |
-| 2026-09-16: Enterprise audit on 01-01-PLAN.md. Applied 4 must-have, 6 strongly-recommended. Deferred 6. Verdict: conditionally acceptable | Phase 1 | Save path is now streaming + atomic; IPC contract that Phases 2-4 inherit was corrected before it shipped |
+Only the ones that still constrain new work. Full history in `.paul/PROJECT.md` and the phase
+SUMMARYs.
+
+| Decision | Phase | Impact |
+| --- | --- | --- |
+| Electron + React + TS via electron-vite | Init | Sets the architecture; system-audio loopback works natively |
+| Main/preload are CommonJS | Init | Do not add `"type": "module"` without re-verifying the app opens |
+| TypeScript pinned to 5.9.3 | Init | Bumping it silently kills language-server diagnostics |
+| Library reads the folder on demand | Init | No index file; removes a whole class of sync bugs |
+| WebM/VP9, not MP4 | 1 | H.264 ignores the bitrate here; Chromium's MP4 muxer emits nothing until stop, so a power cut loses everything |
+| Recordings are finalized after save, never re-encoded | 5 | Seekability is added by rewriting the header and appending cues; a finalize failure must still leave the recording |
+| The protocol must answer `Range`, and send CORS headers | 5, 2 | Without ranges every seek lands at zero; without `Access-Control-Allow-Origin` the thumbnail canvas is tainted and `toBlob` returns null |
+| The app is a floating bar, not a window | 5 | A recorder is never the task. Recording must never require opening anything |
+| Region crop uses the breakout box, not canvas | 4 | Better on fps, jitter and CPU; forwards each frame with its own timestamp |
+| Every always-on-top window sets `setContentProtection(true)` | 5 | Verified: 3919 matching pixels captured without it, **0** with it |
+| The recordings window hides while recording | 7 | It is the one window capture can see, and hiding does not stop its media — pause *and* mute |
+| One validator for every path | 7 | A name that cannot be served must not be creatable either; `verify-guards.cjs` exercises the shipped function |
+| Settings live in the window, not on the bar | 7 | One copy of each control. The bar keeps only what changes mid-recording |
+| Recordings folder falls back to `Videos/ScreenRecorder` | 6 | Renaming the app must never orphan existing recordings. **The live folder on this machine is the old one** |
 
 ### Deferred Issues
 
-| Issue                                    | Origin | Effort | Revisit                        |
-| ---------------------------------------- | ------ | ------ | ------------------------------ |
-| Container choice (mp4/avc1 vs webm/vp9)   | Init   | S      | During v0.1 — affects save path |
-| Region-capture crop strategy              | Init   | M      | When region phase begins        |
-| ~~Persisted log file~~ — **shipped 2026-09-25** (userData/logs/app.log) | Audit | S | Done |
-| ~~Free-space pre-check~~ — **shipped 2026-09-25** (warns at 2 GB, refuses at 300 MB) | Audit | S | Done |
-| Pin container format for Store builds     | Audit  | S      | If/when MS Store is pursued     |
+| Issue | Impact | Disposition |
+| --- | --- | --- |
+| **MSIX / Microsoft Store packaging** | Cannot submit to the Store | Needs a Partner Center publisher identity — the user's to obtain. `npm run dist:store` is wired |
+| **Installer is unsigned** | SmartScreen warns on first run | Only matters for direct distribution; the Store re-signs |
+| Gradient banding in dark gradients | Visible artefact | Root cause is 8-bit 4:2:0 chroma, which `MediaRecorder` cannot avoid in either codec. Needs a different capture/encode path |
+| A minimised window records nothing | Documented limit | Windows supplies no frames for it. Stated in README and Help |
+| Folder **rename** is not implemented | Minor | Create and delete are; rename was never asked for, and Explorer is one click away |
+| Recordings made before 05-01 report no duration | Cosmetic, historical | The player says so when one is opened. Not worth a migration |
+| ~~Full-screen capture at ~12 fps~~ | — | **Cleared 2026-09-23 by a reboot.** It was an OS state: DXGI duplication failed on both adapters. Before blaming code for choppy capture, run the Chromium capture logs — see `CLAUDE.md` |
+| ~~Window capture "1.1 fps"~~ | — | **Not real.** A benchmark bug: it captured a static window. 58.7 fps against an animated one |
+| ~~02-02 thumbnails parked~~ | — | **Shipped 2026-09-25** |
 
-### Blockers/Concerns
+### Boundaries (Active)
 
-| Concern                                                                                      | Impact                          | Resolution Path                       |
-| -------------------------------------------------------------------------------------------- | ------------------------------- | ------------------------------------- |
-| ~~CLAUDE.md contradicted the code on container choice~~ | Resolved | **Closed at UNIFY** — CLAUDE.md now documents VP9 preference with the measured evidence |
-| ~~Motion smoothness unconfirmed~~ | **Root cause found 2026-09-17**: interval jitter, not frame rate or bitrate. Capturing 60 Hz content at ~29 fps samples unevenly and reads as "snapping" | Target raised to 60 fps; jitter 8.4 -> 5.4 ms. **User confirmed resolved** |
-| Legacy capture path applied then reverted same day | It won on average fps while doubling jitter — the metric that actually matters | Reverted to getDisplayMedia; CLAUDE.md corrected |
-| Orphaned .part files were never reclaimed | User lost a recording to a flat battery; 31.4s was recoverable but stranded | `recoverOrphanedParts()` — **verified 2026-09-17**: reclaimed the 11.2 MB orphan intact |
-| ~~AC-5/AC-7 unexercised~~ | **Closed 2026-09-17** via dev-only `__sim` hooks, after three plans | Root cause was diagnostic: both were written against UI this app never shows |
-| ~~AC-6 unevidenced~~ — **closed 2026-09-25**: 5 min at Maximum, 105 MB file, memory 333.0 -> 332.2 MB median (growth 1.00x), duration and seek exact | Evidence captured by driving the built app; the new log file made the `[memory]` series retrievable |
-| Defensive criteria keep shipping unexercised — AC-2, AC-5b, AC-5c, AC-8 refusals | Third plan with this pattern | **Folded into 02-02** as AC-6..AC-9, with an automated `verify:guards` script for the protocol refusals |
-| ~~Recordings carry no Duration and no Cues~~ | **Fixed 2026-09-18 in 05-01**: duration 20.673 s recovered, seek 561 ms → 63 ms, cluster bytes identical | Existing recordings deliberately left alone at the user's choice; the player names the condition instead |
-| MP4 cannot replace WebM | Chromium's MP4 muxer emits nothing until stop — 750 MB in memory for 5 min, and a power cut loses everything | Measured 2026-09-18. Re-measure before revisiting |
-| Finalize fallback is unexercised | If `finalizeWebm` throws, the recording should still land by plain rename — correct by construction, never forced | A dev-only `__sim` hook, as was done for AC-5/AC-7 |
-| `frontend-design` was not invocable in a resumed session | A plan marked it **blocking** | Guidance read from the installed plugin on disk instead. If a future plan blocks on a skill, check it resolves before APPLY |
-| ~~Window capture measures 1.1 fps~~ — **benchmark bug, fixed 2026-09-22**: 58.7 fps on an animated window | **Blocks Phase 4** (window/region), which was reordered behind audio | A native Windows Graphics Capture module is the likely unblock — much larger than any phase so far |
-| ~~02-02 thumbnails parked~~ — **shipped 2026-09-25** | Adds 0 feature points; browse was already counted in 02-01 | Plan and audit remain valid; tile placeholders already sized, so resuming causes no relayout |
-| Ceremony reduced by request | Audit skipped for plans that do not touch data safety or security | 03-01 adds no delete path and no new CSP source, so the audit's usual targets are absent |
-| ~~Full-screen capture at ~12 fps~~ — **cleared by a reboot 2026-09-23** (48 fps) | Real recordings affected (measured 13 frames/s on playback); region capture would inherit it | OS state: DXGI duplication fails on both adapters, WGC monitor capture starved. Not app code. Reboot, then re-measure |
-| Gradient banding root cause is 8-bit 4:2:0 chroma, which MediaRecorder cannot avoid | May persist despite higher bitrate | Needs a different capture path if it matters |
-| ~~Quality picker deferred~~ | **Shipped 01-03**: three presets, persisted, Balanced states its motion cost | Closed |
-| 12 fps measurement may be confounded by the test animation own render rate | Root-cause claim unproven | **AC-1 of 01-02**, now with an explicit ≥2x decision rule |
-| Findings will be single-machine, single-session | Cannot generalise to "Electron limitation" | Audit requires scope stated explicitly in FINDINGS |
-
-## Boundaries (Active)
-
-Protected for Plan 03-01:
+These hold for **any** future plan unless the user explicitly lifts them:
 
 - `package.json` — no `"type": "module"`; `typescript` stays pinned at 5.9.3
-- `electron.vite.config.ts` — build targets and output formats
-- `webPreferences` — `contextIsolation: true`, `nodeIntegration: false`
-- `tsconfig.*.json` — strictness flags
-- Streaming save pipeline + `.part` atomic write + `recoverOrphanedParts()`
+- `webPreferences` — `contextIsolation: true`, `nodeIntegration: false`. Never relax
+- The preload exposes a named, explicit surface. Never expose `ipcRenderer` itself
+- **Renderer CSP: `file:` is forbidden.** `recording:` in `media-src` is the one validated path
+- Streaming save pipeline + `.part` atomic write + `recoverOrphanedParts()` — never make a failure
+  path that can lose a recording
+- `placeRecording()`'s fallback: if finalizing fails, the recording still lands by plain rename
 - Capture path: `getDisplayMedia`, `resizeMode: 'none'`, no width/height constraints
-- Codec preference (webm/vp9 first)
-- Quality preset model and `settings.json` handling from 01-03
-- **Renderer CSP: `file:` forbidden.** `recording:` added to `media-src` 2026-09-17 with user authorisation after a boundary stop — one validated handler, not filesystem access
-- `recordingPath.cjs` validation and `verify-guards.cjs` — audio changes nothing here
-- Codec preference (webm/vp9) — VP9 carries Opus audio; changing it affects both streams
-- Out of scope: microphone and mixing (03-02), window/region, thumbnails, new dependencies
+- Codec preference (webm/vp9 first) — VP9 carries Opus; changing it affects both streams
+- `recordingPath.cjs` is the single validator, and `scripts/verify-guards.cjs` must keep exercising
+  the shipped function rather than a copy of its rules
+- Deleting anything defaults to the Recycle Bin and **never** falls back to a permanent delete
+- No new runtime dependencies without saying why. No telemetry without asking
 
 ## Session Continuity
 
-Last session: 2026-09-18
-Stopped at: packaged and installed. Capturio-Setup-0.1.0.exe built, installed per-user, and verified: records, saves, seeks, thumbnails, tray, log
-Next action: user tries the installed app; then MSIX for the Store (needs a Partner Center publisher identity)
-Resume file: .paul/phases/05-playback-and-controls/05-02-SUMMARY.md
+Last session: 2026-09-27
+Stopped at: Phase 7 closed and the project documentation brought up to date.
+Next action: **Phase 8 — configurable global shortcuts** (show the bar; record a region immediately),
+then decide whether the short tour is still worth building now that Help exists.
+Resume file: `.paul/phases/07-library-and-window-ux/07-01-SUMMARY.md`
 
-**Repository:** committed at 3546d68. Phases 1 and 2 tracked; working tree clean at commit.
+**Repository:** `https://github.com/Mahdi-Z0/Capturio.git`, branch `main`.
 
-**Committed:** 03-01, 05-01, 05-02 at 7fbcde2 (not pushed). **Uncommitted:** 03-02.
+**Unpushed:** as of this update, 9 commits are committed locally and **not pushed** — `2f978f7`,
+`78bdecf`, `3e26928`, `29a4dc8`, `23a0ba2`, `8876027`, `8ecbf58`, `32d4d62`, `cc82af5`. The user has
+not authorised a push. **Ask before pushing** (a project rule in `CLAUDE.md`, and it has been broken
+once — `058906d` was pushed unprompted).
 
-**Parked:** 02-02 thumbnails. Its validator and verifier shipped and are committed; the cache,
-generation and `__sim` hooks remain unbuilt. Plan and audit stay in place.
+**The user's recordings folder is `C:\Users\master\Videos\ScreenRecorder`** (the pre-rename name, kept
+deliberately). It holds their own recordings, including a folder they made called `Mine`. Never delete
+anything in there that you did not create; clean up your own test recordings to the Recycle Bin.
+
+**How work is verified here:** by driving the built app over the Chrome DevTools Protocol
+(`electron.exe . --remote-debugging-port=<port>`, then `Runtime.evaluate` over the WebSocket from a
+small Node script). `npm run build` first. Development-only verification has been wrong often enough
+in this project that it does not count as evidence — see `CLAUDE.md` for the specific cases.
 
 ---
 

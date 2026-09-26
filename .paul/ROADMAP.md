@@ -1,102 +1,71 @@
 ---
-description: 'ScreenRecorder — milestone and phase structure'
+description: 'Capturio — milestone and phase structure'
 type: Roadmap
-about: 'ScreenRecorder'
+about: 'Capturio'
 ---
 
-# Roadmap: ScreenRecorder
+# Roadmap: Capturio
 
 ## Overview
 
-A Windows desktop screen recorder built with Electron. It captures the full screen, a single
-window, or a selected region, with system audio, microphone, both, or none, and manages the
-resulting files from a built-in library.
+A Windows desktop screen recorder built with Electron. It captures the full screen, a single window,
+or a selected region, with system audio, microphone, both, or none, and manages the resulting files
+from a built-in recordings window. The app itself is a floating control bar.
 
 ## Milestones
 
-| Version | Name               | Phases | Status         | Completed  |
-| ------- | ------------------ | ------ | -------------- | ---------- |
-| v0.1    | Full-Screen Capture | 1      | ✅ Shipped     | 2026-09-17 |
-| v0.2    | Recordings Library  | 1      | ✅ Shipped     | 2026-09-18 |
-| v0.3    | Audio               | 1      | 🚧 In Progress | -          |
+| Version | Name                      | Phases | Status     | Completed  |
+| ------- | ------------------------- | ------ | ---------- | ---------- |
+| v0.1    | Full-Screen Capture       | 1      | ✅ Shipped | 2026-09-17 |
+| v0.2    | Recordings Library        | 1      | ✅ Shipped | 2026-09-18 |
+| v0.3    | Audio                     | 1      | ✅ Shipped | 2026-09-22 |
+| v0.4    | Window, region and the bar | 2     | ✅ Shipped | 2026-09-23 |
+| v0.5    | Identity and shipping     | 1      | ✅ Shipped | 2026-09-25 |
+| v0.6    | A library worth using     | 1      | ✅ Shipped | 2026-09-27 |
+| v0.7    | Shortcuts and a tour      | 1      | ⬜ Next    | -          |
+| v1.0    | Microsoft Store           | 1      | ⬜ Blocked on the user's Partner Center identity | - |
 
-## 🚧 Current Milestone: v0.3 Audio
+## ⬜ Next Milestone: v0.7 Shortcuts and a tour
 
-**Goal:** Record sound alongside the picture — system audio, the microphone, or both mixed.
+**Goal:** Reach the bar without finding it, and explain it once on demand.
 
-This is 11 of the 16 remaining feature points, and it is next because window capture is blocked.
-The approach was written into `CLAUDE.md` during the first planning session and has not changed.
+Agreed with the user, in this order:
+
+1. **Configurable global shortcuts.** One to show the bar, one to record a region immediately.
+   Defaults are shipped rather than left unset. The hard part is honesty: Windows reserves most
+   `Win+` combinations and `globalShortcut.register` returns false, so the UI must report a shortcut
+   that did not take instead of displaying it as if it works. Ctrl+Shift+R already exists and already
+   logs `[shortcut] Ctrl+Shift+R is taken` when it loses the race — that is the precedent to follow.
+2. **A short "show me around" tour.** Highlights the real buttons on the live bar, launched from
+   Settings and from Help. Explicitly **not** shown on first run — the user decided against that
+   ("bar only window on first run, no tutorial"). The Help view now covers the same ground in prose,
+   so this is a small addition rather than onboarding, and it may reasonably be dropped.
 
 ## Phases
 
-| Phase | Name               | Plans | Status      | Completed  |
-| ----- | ------------------ | ----- | ----------- | ---------- |
-| 1     | Capture to Disk    | 3     | ✅ Complete | 2026-09-17 |
-| 2     | Recordings Library | 1     | ✅ Complete | 2026-09-18 |
-| 3     | Audio              | 2     | Planning    | -          |
-| 4     | Window and region  | TBD   | ⛔ Blocked  | -          |
-| 5     | Playback and controls | 2  | ✅ Applied  | 2026-09-18 |
+| Phase | Name                    | Plans | Status      | Completed  |
+| ----- | ----------------------- | ----- | ----------- | ---------- |
+| 1     | Capture to Disk         | 3     | ✅ Complete | 2026-09-17 |
+| 2     | Recordings Library      | 2     | ✅ Complete | 2026-09-25 |
+| 3     | Audio                   | 2     | ✅ Complete | 2026-09-22 |
+| 4     | Window and region       | 2     | ✅ Complete | 2026-09-23 |
+| 5     | Playback and controls   | 2     | ✅ Complete | 2026-09-23 |
+| 6     | Packaging and identity  | 1     | ✅ Complete | 2026-09-25 |
+| 7     | Library and window UX   | 1     | ✅ Complete | 2026-09-27 |
+| 8     | Shortcuts and a tour    | TBD   | ⬜ Next     | -          |
+| 9     | Microsoft Store (MSIX)  | TBD   | ⬜ Waiting  | -          |
+
+Phases 6 and 7 were built **conversationally**, not through PLAN → APPLY → UNIFY: the user drove them
+as a running list of requests, each verified against the built app and committed on its own. Their
+SUMMARY files were written afterwards so the journey is complete; there are no PLAN files for them,
+and that is deliberate rather than missing.
 
 ## Phase Details
 
-### Phase 2: Recordings Library
-
-**Goal:** Browse recordings in-app, play them inline or in the system player, and delete them
-safely.
-**Depends on:** Phase 1 (recordings directory, save pipeline, reveal handler)
-**Research:** Unlikely — one known constraint, handled below
-
-**Scope:**
-
-- List recordings by reading the folder, with name, date, size and duration
-- Inline playback, plus "open in default player"
-- Delete to the Recycle Bin, with a permanent option
-- Thumbnail tiles
-
-**Known constraint:** the renderer's CSP is `media-src 'self' blob:`, so a `<video>` cannot load
-`file://`. Playback needs a custom protocol handler registered in main. Loosening the CSP instead
-would be the wrong trade.
-
-**Plans:**
-
-- [x] 02-01: Library core — browse, play, delete — _complete 2026-09-17_
-- [~] 02-02: Thumbnail generation and caching — **PARKED 2026-09-18**
-
-### Why 02-02 is parked, not cancelled
-
-Thumbnails add **zero feature points**. "Browse recordings in-app" was already counted as shipped
-in 02-01, so 02-02 is polish on a feature that already works — while audio is 11 points and window
-capture is blocked. Parking it is a sequencing decision, not a judgement on the work.
-
-Already built and committed from 02-02 (kept, not reverted):
-
-- `src/main/recordingPath.cjs` — request validation, single source of truth
-- `scripts/verify-guards.cjs` — `npm run verify:guards`, 16 refusals + 3 allowances asserted
-
-Still to do if resumed: the thumbnail cache (Task 1), generation and display (Task 2), and the two
-dev-only `__sim` hooks (Task 3b). The plan and its audit remain in place and stay valid — the tile
-placeholders in `Library.tsx` are already sized, so resuming causes no relayout.
-
-Split because combined this is 4+ tasks, past the 2-3 guidance. 02-01 ships a usable library with
-placeholder tiles; 02-02 fills them. A thumbnail **cache** keyed by path and mtime does not violate
-the "no index file" decision: an index is authoritative metadata that drifts from reality, while a
-cache is derived, disposable, and regenerates itself when deleted.
-
-## Phase Details
-
-### Phase 1: Capture to Disk
+### Phase 1: Capture to Disk — ✅ complete
 
 **Goal:** Record the primary screen with no audio and save a playable file to the user's Videos
 folder.
-**Depends on:** Nothing (first phase)
-**Research:** Unlikely (approach already documented in `CLAUDE.md`)
-
-**Scope:**
-
-- Recordings directory under `app.getPath('videos')`, created on first use
-- `setDisplayMediaRequestHandler` auto-selecting the primary screen (no picker)
-- Save and reveal IPC handlers
-- Renderer record/stop control with runtime container selection
 
 **Plans:**
 
@@ -104,41 +73,111 @@ folder.
 - [x] 01-02: Capture frame-rate research — judder root-caused, 60 fps applied — _complete 2026-09-17_
 - [x] 01-03: Recording quality picker — three presets, persisted — _complete 2026-09-17_
 
-Plans 01-02 and 01-03 both came out of 01-01's checkpoint.
+01-02 resolved the "~12 fps" scare: it was an artifact of the benchmark's own motion source. The real
+cause of laggy motion was **interval jitter**, not frame rate — sampling a 60 Hz display at ~29 fps
+spans a non-integer number of refreshes. Raising the target to 60 halved the jitter.
 
-The user asked for a quality setting, which 01-01's boundaries explicitly excluded ("no settings
-screen"), so it was deferred rather than smuggled in. It then moved again — to 01-03 — to investigate capture frame rate first.
+### Phase 2: Recordings Library — ✅ complete
 
-01-02 resolved that: the "~12 fps" figure was an artifact of the benchmark's own motion source, and
-real capture runs ~29 fps at a 30 fps target. The actual cause of the laggy motion was **interval
-jitter**, not frame rate — sampling a 60 Hz display at ~29 fps spans a non-integer number of
-refreshes. Raising the target to 60 fps halved the jitter and the user confirmed it resolved.
-
-### Phase 3: Audio
-
-**Goal:** Record system audio, the microphone, or both mixed, selectable before recording starts.
-**Depends on:** Phase 1 (capture path, save pipeline, quality presets)
-**Research:** Unlikely — the approach is documented in `CLAUDE.md`
+**Goal:** Browse recordings in-app, play them inline or in the system player, and delete them safely.
 
 **Plans:**
 
-- [ ] 03-01: System audio — loopback capture and the audio-source control
-- [ ] 03-02: Microphone and mixing — device selection, Web Audio mix, level control
+- [x] 02-01: Library core — browse, play, delete — _complete 2026-09-17_
+- [x] 02-02: Thumbnail generation and caching — _parked 2026-09-18, completed 2026-09-25_
 
-Split because `MediaRecorder` accepts only one audio track: system audio alone is a straight
-addition to the existing capture call, while mic and mixing require a Web Audio graph. 03-01 ships
-a working system-audio recording; 03-02 adds the other two modes.
+02-02 was parked for sequencing (thumbnails add zero feature points while audio was 11) and finished
+later. Its two lasting contributions are `src/main/recordingPath.cjs` — one validator shared by the
+protocol handler and its verifier — and `scripts/verify-guards.cjs`, which now asserts **23**
+refusals, 6 allowances and 11 folder names.
 
-### Phase 4: Window and region — ⛔ blocked
+**Known constraint, still true:** the renderer CSP is `media-src 'self' blob: recording:`, so a
+`<video>` cannot load `file://`. Playback goes through the custom protocol. `file:` stays forbidden.
 
-Window capture measures **1.1 fps** through both capture paths (`npm run bench:capture --config
-window-capture`). Region capture additionally needs a crop pipeline, since `getDisplayMedia` cannot
-capture a sub-region. Neither is buildable on the current capture stack; a native Windows Graphics
-Capture module is the likely unblock, which is a much larger piece of work than any phase so far.
+### Phase 3: Audio — ✅ complete
 
-**Reordering note:** audio was originally sequenced last, on the grounds that it was most likely to
-force a rewrite. Window capture turned out to be the blocked one instead, so audio moved up.
+**Goal:** Record system audio, the microphone, or both mixed, selectable before recording starts.
+
+**Plans:**
+
+- [x] 03-01: System audio — loopback capture and the audio-source control — _complete 2026-09-22_
+- [x] 03-02: Microphone and mixing — device selection, Web Audio mix — _complete 2026-09-22_
+
+Verified by decoding saved files with a 440 Hz tone playing: `none` has no audio track, `system`
+carries the tone, `microphone` carries room sound with the tone at ~0 (echo cancellation), `both`
+carries both in one track.
+
+### Phase 4: Window and region — ✅ complete
+
+**Goal:** Record one window, or a rectangle dragged out on screen.
+
+**Plans:**
+
+- [x] 04-01: Single-window capture — _complete 2026-09-22_
+- [x] 04-02: Region capture with a crop pipeline — _complete 2026-09-23_
+
+**This phase was marked ⛔ blocked for five days on a measurement that was wrong.** The "1.1 fps"
+figure came from a benchmark that captured `sources[0]` — an arbitrary, usually static window — and
+Windows Graphics Capture only delivers a frame when content changes. Against an animated window:
+**58.7 fps, 2.5 ms jitter**. The lesson is in `CLAUDE.md`: always capture a *moving* source when
+measuring, identified by `getMediaSourceId()`, never by list position.
+
+### Phase 5: Playback and controls — ✅ complete
+
+**Goal:** Make recordings seekable, and make a recording controllable while it runs.
+
+**Plans:**
+
+- [x] 05-01: Seekable recordings — duration and a keyframe cue index — _complete 2026-09-18_
+- [x] 05-02: The recording indicator, pause/resume and mute — _complete 2026-09-18_
+
+05-01 took three independent fixes before seeking actually worked, each found by testing the real
+path rather than a proxy: finalize the file, answer `Range` in the protocol, and put cue points only
+on clusters that hold a video keyframe. 05-02 grew into the floating bar (commit `b5ae5cb`), which
+replaced the app window entirely.
+
+### Phase 6: Packaging and identity — ✅ complete
+
+**Goal:** Something the user can install and run outside the dev setup, under its own name.
+
+**Plans:**
+
+- [x] 06-01: Rename, icons, licence, README, installer, tray, log — _complete 2026-09-25_
+
+See `.paul/phases/06-packaging-and-identity/06-01-SUMMARY.md`.
+
+### Phase 7: Library and window UX — ✅ complete
+
+**Goal:** Make the recordings window worth opening: folders, selection, and the things a file list is
+expected to do.
+
+**Plans:**
+
+- [x] 07-01: The window the user asked for — six agreed items plus three rounds of refinement —
+      _complete 2026-09-27_
+
+See `.paul/phases/07-library-and-window-ux/07-01-SUMMARY.md`. The user's original six-item list was
+worked in the agreed order 5 → 3 → 4 → 2, with items 1 and 6 remaining (Phase 8).
+
+### Phase 8: Shortcuts and a tour — ⬜ next
+
+**Goal:** As described under the v0.7 milestone above.
+
+**Depends on:** nothing outstanding. The Settings view exists to hold the controls, and Help exists to
+launch the tour from.
+
+**Research:** none needed. `globalShortcut` is already in use for Ctrl+Shift+R; the failure mode
+(a combination Windows has reserved) is already observed and logged.
+
+### Phase 9: Microsoft Store (MSIX) — ⬜ waiting on the user
+
+**Goal:** A submittable MSIX package.
+
+`electron-builder.yml` already has an `appx`-capable configuration path, and `npm run dist:store` is
+wired. What is missing is not build work: it is a **Partner Center publisher identity**, which only
+the user can obtain. The Store re-signs on submission, so the unsigned-installer warning does not
+apply there.
 
 ---
 
-_Roadmap created: 2026-09-16_
+_Roadmap created: 2026-09-16 — last updated 2026-09-27_

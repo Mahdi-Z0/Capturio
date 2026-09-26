@@ -86,7 +86,9 @@ const planPct = planLines.length ? Math.round((plansDone / planLines.length) * 1
 // --- render --------------------------------------------------------------------
 
 const groups = [...new Set(feats.map((f) => f.group))];
-const today = new Date().toISOString().slice(0, 10);
+// Local date, not UTC: the report is read next to the user's own clock, and an
+// hour's offset made it look a day stale.
+const today = new Date().toLocaleDateString('en-CA');
 
 let out = `# Progress
 
@@ -112,8 +114,9 @@ ${bar(featurePct)} ${featurePct}%
 
 > **What this percentage does and does not mean.** It measures the core features declared in
 > \`.paul/PROJECT.md\`, weighted by rough effort. It is **not** a schedule estimate, and it does not
-> cover work that has not been declared yet — Phases 2–4 exist only as a build order, not as plans.
-> Treat it as "how much of the intended product exists", not "how close to done".
+> cover work nobody has declared yet. Items still to build are counted in the denominator, so this
+> reflects the product as now intended rather than as first declared. Treat it as "how much of the
+> intended product exists", not "how close to done".
 `;
 
 if (blockedWeight > 0) {

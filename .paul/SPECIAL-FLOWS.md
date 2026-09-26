@@ -1,8 +1,8 @@
 # Specialized Flows
 
-**Project:** ScreenRecorder
+**Project:** Capturio (created as ScreenRecorder; renamed 2026-09-25)
 **Created:** 2026-09-16
-**Last Updated:** 2026-09-16
+**Last Updated:** 2026-09-27
 
 ---
 

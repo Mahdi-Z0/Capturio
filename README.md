@@ -115,6 +115,9 @@ one looks fine.
 | Capture benchmark | `npm run bench:capture` |
 | Regenerate icons | `npm run icons` |
 
+Picking this up as a maintainer? Start with [`AGENTS.md`](AGENTS.md), then
+[`.paul/STATE.md`](.paul/STATE.md) for where things stand and what is next.
+
 `npm run verify` runs three suites against the shipped modules rather than copies of them: the path
 rules that decide which files may be served, byte-range handling, and the finalizer — which asserts
 that the media bytes are identical before and after.
