@@ -169,13 +169,13 @@
     },
     {
       "name": "Packaging / installer",
-      "status": "todo",
-      "done": true,
+      "status": "done",
       "shipped": "2026-09-25"
     },
     {
       "name": "Persisted error log",
-      "status": "todo"
+      "status": "done",
+      "shipped": "2026-09-25"
     }
   ]
 }
