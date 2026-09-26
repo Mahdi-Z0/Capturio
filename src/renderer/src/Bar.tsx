@@ -12,9 +12,11 @@ import {
   type AudioMode,
   type CaptureTarget,
   type QualityPreset,
+  type Recording,
   type RegionRect,
 } from '../../shared/types.js';
 import {
+  CheckIcon,
   CloseIcon,
   SlidersIcon,
   LibraryIcon,
@@ -50,6 +52,10 @@ type SourceKind = 'screen' | 'window' | 'region';
 
 const BAR_HEIGHT = 64;
 
+/** How long the "saved" card stays up. Long enough to read and act on, short
+ * enough that the bar is back to its own size before it is next needed. */
+const SAVED_NOTICE_MS = 12_000;
+
 /**
  * The floating control bar.
  *
@@ -84,6 +90,9 @@ export default function Bar(): React.JSX.Element {
   const [quality, setQuality] = useState<QualityPreset>(DEFAULT_QUALITY);
   const [panel, setPanel] = useState<Panel>('none');
   const [lowSpace, setLowSpace] = useState<number | null>(null);
+  // `lastSaved` never clears, so the card is derived from it plus the one thing
+  // that can put it away: which save has been dismissed, by hand or by timeout.
+  const [dismissedSave, setDismissedSave] = useState<string | null>(null);
   const shellRef = useRef<HTMLDivElement>(null);
 
   const recording = status === 'recording';
@@ -161,6 +170,19 @@ export default function Bar(): React.JSX.Element {
     if (lastSaved) window.api.announceRecording(lastSaved.filePath);
   }, [lastSaved]);
 
+  // What happened to the recording is the one thing worth interrupting for, and
+  // the recordings window is deliberately not opened to say it -- that would put
+  // a window back over the work the moment the recording ended. Starting the
+  // next recording is an answer to the last one, so the card goes then too.
+  const savedCard: Recording | null =
+    lastSaved && !recording && lastSaved.filePath !== dismissedSave ? lastSaved : null;
+
+  useEffect(() => {
+    if (!lastSaved) return undefined;
+    const timer = setTimeout(() => setDismissedSave(lastSaved.filePath), SAVED_NOTICE_MS);
+    return () => clearTimeout(timer);
+  }, [lastSaved]);
+
   // Ctrl+Shift+R, relayed by main. The bar answers it rather than the recorder,
   // because only the bar knows what is currently chosen to record.
   useEffect(() => {
@@ -196,9 +218,11 @@ export default function Bar(): React.JSX.Element {
   // The window is only as tall as what it shows: a transparent window still
   // swallows clicks, so leaving it panel-sized would block the desktop beneath.
   useEffect(() => {
-    const height = openPanel === 'none' ? BAR_HEIGHT : (shellRef.current?.scrollHeight ?? BAR_HEIGHT);
+    // Measured every time, not just for panels: the note and the saved card make
+    // the shell taller too, and a window shorter than its content clips them.
+    const height = Math.max(BAR_HEIGHT, shellRef.current?.scrollHeight ?? BAR_HEIGHT);
     window.api.resizeBar(Math.ceil(height));
-  }, [openPanel, source, windowTarget, audio, quality, recording, note]);
+  }, [openPanel, source, windowTarget, audio, quality, recording, note, savedCard]);
 
   return (
     <div className="barShell" ref={shellRef}>
@@ -351,10 +375,48 @@ export default function Bar(): React.JSX.Element {
         </p>
       )}
 
-      {lastSaved && !recording && !note && (
-        <p className="note" role="status">
-          Saved {lastSaved.fileName}
-        </p>
+      {savedCard && !recording && (
+        <div className="saved" role="status">
+          <button
+            type="button"
+            className="saved__main"
+            onClick={() => void window.api.revealRecording(savedCard.filePath).catch(() => undefined)}
+            title="Show in folder"
+          >
+            <span className="saved__tick" aria-hidden="true">
+              <CheckIcon />
+            </span>
+            <span className="saved__text">
+              <span className="saved__title">Recording saved</span>
+              <span className="saved__name">{savedCard.fileName}</span>
+            </span>
+          </button>
+          <div className="saved__actions">
+            <button
+              type="button"
+              className="saved__action"
+              onClick={() => void window.api.openRecordingExternally(savedCard.filePath).catch(() => undefined)}
+            >
+              Open
+            </button>
+            <button
+              type="button"
+              className="saved__action"
+              onClick={() => void window.api.revealRecording(savedCard.filePath).catch(() => undefined)}
+            >
+              Show in folder
+            </button>
+            <button
+              type="button"
+              className="icon saved__close"
+              onClick={() => setDismissedSave(savedCard.filePath)}
+              title="Dismiss"
+              aria-label="Dismiss"
+            >
+              <CloseIcon />
+            </button>
+          </div>
+        </div>
       )}
 
       {openPanel === 'window' && (

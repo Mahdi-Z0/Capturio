@@ -17,8 +17,14 @@ While recording, the same bar becomes the timer and the controls.
 - **60 fps** by default, at three quality levels.
 - **Pause and resume** mid-recording, and **mute** without ending the recording.
 
-Recordings are saved to `Videos\Capturio` as WebM, and the built-in library lets you watch, reveal
-and delete them. Deleting moves a file to the Recycle Bin unless you explicitly choose otherwise.
+When a recording lands, a small card appears under the bar with the file's name, **Open** and **Show
+in folder** — clicking the card itself shows it in the folder. Nothing opens over your work; the card
+puts itself away after a few seconds.
+
+Recordings are saved to `Videos\Capturio` as WebM, and the built-in library lets you watch, reveal,
+organise and delete them. It browses like a file window — back, forward, up and a breadcrumb — and
+you can make your own subfolders and move recordings into them. It never goes above the recordings
+folder. Deleting moves a file to the Recycle Bin unless you explicitly choose otherwise.
 
 ## Using it
 
@@ -28,7 +34,7 @@ and delete them. Deleting moves a file to the Recycle Bin unless you explicitly 
 | 🔊 🎤 | computer sound, microphone — on or off, independently |
 | ● | start recording |
 | Sliders | quality and microphone choice |
-| Library | your recordings |
+| Library | your recordings, in folders |
 | ✕ | hide the bar — it comes back from the tray icon |
 
 **Ctrl+Shift+R** starts and stops from anywhere, so you never have to find the bar first. A red

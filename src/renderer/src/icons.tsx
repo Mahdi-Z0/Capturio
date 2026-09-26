@@ -134,3 +134,59 @@ export function RecordIcon(): React.JSX.Element {
     </svg>
   );
 }
+
+/** A tick: the recording landed. */
+export function CheckIcon(): React.JSX.Element {
+  return (
+    <svg {...base}>
+      <path d="M4 10.5 8 14.5 16 5.5" />
+    </svg>
+  );
+}
+
+/** A folder. The tab is what makes it read as one at 20px. */
+export function FolderIcon(): React.JSX.Element {
+  return (
+    <svg {...base}>
+      <path d="M2.5 6V4.75A1.25 1.25 0 0 1 3.75 3.5h3.1c.4 0 .78.19 1.01.51l.78 1.07" />
+      <rect x="2.5" y="5.75" width="15" height="10.75" rx="1.5" />
+    </svg>
+  );
+}
+
+/** A new folder: the same shape with a plus where the contents would be. */
+export function FolderPlusIcon(): React.JSX.Element {
+  return (
+    <svg {...base}>
+      <path d="M2.5 6V4.75A1.25 1.25 0 0 1 3.75 3.5h3.1c.4 0 .78.19 1.01.51l.78 1.07" />
+      <rect x="2.5" y="5.75" width="15" height="10.75" rx="1.5" />
+      <path d="M10 8.9v4.7M7.65 11.25h4.7" />
+    </svg>
+  );
+}
+
+/** Back and forward, as a browser draws them. */
+export function BackIcon(): React.JSX.Element {
+  return (
+    <svg {...base}>
+      <path d="M12.5 4.5 7 10l5.5 5.5" />
+    </svg>
+  );
+}
+
+export function ForwardIcon(): React.JSX.Element {
+  return (
+    <svg {...base}>
+      <path d="M7.5 4.5 13 10l-5.5 5.5" />
+    </svg>
+  );
+}
+
+/** Up one level. */
+export function UpIcon(): React.JSX.Element {
+  return (
+    <svg {...base}>
+      <path d="M10 16V5M5.5 9.5 10 5l4.5 4.5" />
+    </svg>
+  );
+}

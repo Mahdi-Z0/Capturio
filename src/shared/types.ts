@@ -81,10 +81,38 @@ export interface Recording {
 export interface RecordingListItem {
   fileName: string;
   filePath: string;
+  /**
+   * Where it sits under the recordings folder, `/`-separated — `Intro.webm` at
+   * the top, `Lectures/Intro.webm` in a subfolder. This, not the absolute path,
+   * is what the folder UI and the move action work in.
+   */
+  relativePath: string;
   /** Custom-protocol URL. The renderer CSP forbids file://, so never build one. */
   playbackUrl: string;
   modifiedAt: string;
   sizeBytes: number;
+}
+
+/** A subfolder of the recordings folder, as the library shows it. */
+export interface FolderEntry {
+  name: string;
+  /** Relative to the recordings folder, `/`-separated. `''` is the folder itself. */
+  path: string;
+  /** Recordings inside, counted through nested folders. */
+  itemCount: number;
+  sizeBytes: number;
+  /** Newest recording inside, or the folder's own time when it is empty. */
+  modifiedAt: string;
+}
+
+/** One folder's contents: what the recordings window shows at a given level. */
+export interface FolderListing {
+  /** Relative to the recordings folder; `''` is the folder itself. */
+  path: string;
+  /** What to call this level on screen. */
+  name: string;
+  folders: FolderEntry[];
+  files: RecordingListItem[];
 }
 
 /** Extensions the library lists and the protocol handler is willing to serve. */
@@ -313,6 +341,17 @@ export interface RecorderApi {
   listRecordings(): Promise<RecordingListItem[]>;
   deleteRecording(filePath: string, permanent: boolean): Promise<void>;
   openRecordingExternally(filePath: string): Promise<void>;
+
+  /** One folder's contents. `''` is the recordings folder itself. */
+  browseRecordings(relativeDir: string): Promise<FolderListing>;
+  /** Every folder, flattened — what the "move to" menu offers. */
+  listFolders(): Promise<FolderEntry[]>;
+  /** Create a subfolder. Returns its path relative to the recordings folder. */
+  createFolder(parent: string, name: string): Promise<string>;
+  /** Move a recording into a folder. Returns its new absolute path. */
+  moveRecording(filePath: string, targetDir: string): Promise<string>;
+  /** Show a folder in Explorer, so the parts this app does not do are one click away. */
+  revealFolder(relativeDir: string): Promise<void>;
 
   /** Recorder -> recordings window: a new recording landed. */
   announceRecording(filePath: string): void;

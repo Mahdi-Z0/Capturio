@@ -12,8 +12,8 @@ exist and `Videos/ScreenRecorder` does — renaming the app must never orphan re
 ## Status
 
 **Working:** full-screen, single-window and region capture to disk, quality presets, system (loopback) audio, the recordings
-library (browse, play, reveal, delete), crash recovery of `.part` files, seekable output, and
-pause/resume and mute while recording.
+library (browse by folder, play, reveal, move, delete), user-made subfolders, crash recovery of
+`.part` files, seekable output, and pause/resume and mute while recording.
 
 The app **is** a floating control bar, not a window someone visits. Recording never requires opening
 anything.
@@ -298,6 +298,47 @@ Chromium's MP4 muxer emits nothing until the recording stops, so the whole file 
 memory (~750 MB for 5 minutes at 20 Mbps) and a power cut loses all of it — the exact failure this
 project already suffered. WebM streams; it just needs finishing afterwards. Re-measure before
 revisiting.
+
+## Folders, and the one validator
+
+Recordings started as one flat folder and are now the user's to organise, so the renderer names a
+recording by its path **relative to the recordings folder** (`Intro.webm`, `Lectures/Intro.webm`),
+never by an absolute path it composed itself. `relativePath` on `RecordingListItem` is that name, and
+`recordings:browse` reads one level at a time; `recordings:list` still returns everything, through
+subfolders, for anything that just wants the newest recording.
+
+**Every path goes through `validateRelativePath` in `recordingPath.cjs`** — playback requests, folders
+the user creates, and moves. One set of rules, so a name that cannot be served cannot be created
+either, and `scripts/verify-guards.cjs` exercises the same function the handlers call. It refuses
+`..` segments, backslashes, drive-qualified and absolute paths, empty segments, null bytes, the
+characters Windows forbids, names ending in a dot or space (Windows trims those, so two different
+names become one file), reserved device names (`CON`, `NUL`, `COM1`…), segments over 100 characters
+and nesting deeper than 8. 23 refusals and 6 allowances are asserted, plus 11 folder names.
+
+**Decode URL segments one at a time.** Decoding the whole path at once lets `%2F` inside a name become
+a separator after the split; `%2F` survives URL parsing untouched, so a segment that contains a slash
+only *after* decoding was hiding one, and it is refused rather than kept. The `..` branch itself is
+unreachable through the protocol — a standard scheme normalises it away first — so the verifier
+exercises it directly against the validator rather than pretending the URL path reaches it.
+
+**The recordings window is a browser now**: back, forward, up, and a breadcrumb. The top level is a
+single card for the recordings folder rather than a file list, so there is nowhere above it to go —
+`Place` is `null` at the top, and `parentOf(null)` is `null`.
+
+## Saying where the recording went
+
+`Bar.tsx` shows a card under the bar when a recording lands: the name, **Open**, **Show in folder**,
+and the card body itself reveals it, because that is what clicking a save notification is expected to
+do. It is not a Windows toast and it does not open the recordings window — a window appearing over
+someone's work the moment they stop recording is the interruption the bar exists to avoid.
+
+It is **derived**, not stored: `lastSaved` never clears, so the card is `lastSaved && !recording &&
+not dismissed`. An effect that copied it into state would trip `react-hooks/set-state-in-effect`, and
+"starting the next recording puts the card away" then costs nothing.
+
+**The bar measures its own height on every change now**, not only when a panel is open. The old
+conditional returned the bare `BAR_HEIGHT` whenever no panel was showing, which would have clipped
+this card.
 
 ## Thumbnails, and why the protocol allows reading
 

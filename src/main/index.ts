@@ -23,9 +23,14 @@ import {
   readFile,
   writeFile,
 } from 'node:fs/promises';
-import { dirname, join, resolve, sep, extname } from 'node:path';
+import { basename, dirname, join, relative, resolve, sep, extname } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
-import { resolveRecordingRequest } from './recordingPath.cjs';
+import {
+  resolveRecordingRequest,
+  validateRelativePath,
+  resolveInside,
+  MAX_DEPTH,
+} from './recordingPath.cjs';
 import { createRangeResponse } from './byteRange.cjs';
 import { finalizeWebm } from './webmFinalize.cjs';
 import * as log from './log.cjs';
@@ -39,6 +44,8 @@ import type {
   QualityPreset,
   Recording,
   RecordingListItem,
+  FolderEntry,
+  FolderListing,
 } from '../shared/types.js';
 import {
   DEFAULT_AUDIO_MODE,
@@ -535,6 +542,137 @@ function resolveInsideRecordings(channel: string, filePath: unknown): string {
 const isPlayable = (p: string): boolean =>
   PLAYABLE_EXTENSIONS.includes(extname(p).toLowerCase());
 
+/* --- Folders inside the recordings folder -------------------------------------
+ *
+ * Recordings used to be one flat folder. They are now the user's to organise,
+ * which means the renderer names things by a path relative to the recordings
+ * folder rather than by filename, and every one of those paths goes through the
+ * same validator the playback protocol uses -- so a name that cannot be served
+ * cannot be created either. */
+
+/** `C:\...\Capturio\Lectures\Intro.webm` -> `Lectures/Intro.webm`. */
+function relativeOf(absolutePath: string): string {
+  const rel = relative(getRecordingsDir(), absolutePath);
+  return rel.split(sep).join('/');
+}
+
+/** The protocol URL for a relative path. Each segment is encoded on its own,
+ * or a `/` inside a name would silently become a folder boundary. */
+function playbackUrlFor(relativePath: string): string {
+  const encoded = relativePath.split('/').map(encodeURIComponent).join('/');
+  return `${RECORDING_SCHEME}://f/${encoded}`;
+}
+
+/**
+ * Turn a renderer-supplied relative path into an absolute one, or fail.
+ *
+ * `''` means the recordings folder itself, which is legitimate for browsing and
+ * as a move target, and is the only case that skips the name rules.
+ */
+function resolveRelative(
+  channel: string,
+  input: unknown,
+  options: { requireExtension?: boolean } = {},
+): string {
+  if (typeof input !== 'string') {
+    fail(channel, new Error('Path must be a string'));
+  }
+  const rel = input.replace(/^\/+|\/+$/g, '');
+  if (rel.length === 0) {
+    if (options.requireExtension) fail(channel, new Error('No recording named'));
+    return resolve(getRecordingsDir());
+  }
+  const valid = validateRelativePath(rel, options);
+  if (!valid.ok) fail(channel, new Error(valid.reason));
+  const inside = resolveInside(valid.segments, getRecordingsDir());
+  if (!inside.ok) fail(channel, new Error(inside.reason));
+  return inside.filePath;
+}
+
+/** Recordings, bytes and newest time inside a folder, counted through nesting. */
+async function folderTotals(
+  dir: string,
+  depth = 0,
+): Promise<{ count: number; size: number; newest: number }> {
+  const totals = { count: 0, size: 0, newest: 0 };
+  // The validator caps creatable depth; this cap is for folders that arrived
+  // some other way, so a symlink loop cannot hang the listing.
+  if (depth > MAX_DEPTH) return totals;
+
+  const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+  for (const entry of entries) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      const sub = await folderTotals(full, depth + 1);
+      totals.count += sub.count;
+      totals.size += sub.size;
+      totals.newest = Math.max(totals.newest, sub.newest);
+    } else if (entry.isFile() && isPlayable(entry.name)) {
+      const info = await stat(full).catch(() => null);
+      if (!info) continue;
+      totals.count += 1;
+      totals.size += info.size;
+      totals.newest = Math.max(totals.newest, info.mtimeMs);
+    }
+  }
+  return totals;
+}
+
+/** Every folder under the recordings folder, flattened and depth-first. */
+async function allFolders(relativeDir = '', depth = 0): Promise<FolderEntry[]> {
+  if (depth > MAX_DEPTH) return [];
+  const dir = relativeDir ? join(getRecordingsDir(), ...relativeDir.split('/')) : getRecordingsDir();
+  const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+  const out: FolderEntry[] = [];
+  for (const entry of entries.filter((e) => e.isDirectory()).sort(byName)) {
+    const path = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
+    const totals = await folderTotals(join(dir, entry.name), depth + 1);
+    out.push({
+      name: entry.name,
+      path,
+      itemCount: totals.count,
+      sizeBytes: totals.size,
+      modifiedAt: new Date(totals.newest || Date.now()).toISOString(),
+    });
+    out.push(...(await allFolders(path, depth + 1)));
+  }
+  return out;
+}
+
+const byName = (a: { name: string }, b: { name: string }): number =>
+  a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+
+/** Every recording at or below a folder, as library items. Unsorted. */
+async function collectRecordings(relativeDir: string, depth = 0): Promise<RecordingListItem[]> {
+  if (depth > MAX_DEPTH) return [];
+  const dir = relativeDir ? join(getRecordingsDir(), ...relativeDir.split('/')) : getRecordingsDir();
+  // A missing folder is an empty library, not an error (AC-2).
+  const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+  const out: RecordingListItem[] = [];
+  for (const entry of entries) {
+    const rel = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) {
+      out.push(...(await collectRecordings(rel, depth + 1)));
+      continue;
+    }
+    // .part files are in-flight or unrecovered, not library content.
+    if (!entry.isFile() || !isPlayable(entry.name)) continue;
+    const full = join(dir, entry.name);
+    const info = await stat(full).catch(() => null);
+    // Vanished between readdir and stat. Skip it rather than fail the list.
+    if (!info) continue;
+    out.push({
+      fileName: entry.name,
+      filePath: full,
+      relativePath: rel,
+      playbackUrl: playbackUrlFor(rel),
+      modifiedAt: info.mtime.toISOString(),
+      sizeBytes: info.size,
+    });
+  }
+  return out;
+}
+
 // --- Playback protocol ---------------------------------------------------------
 //
 // The renderer CSP is `media-src 'self' blob:`, so a <video> cannot load file://.
@@ -950,43 +1088,142 @@ function registerIpc(): void {
   });
 
   /**
-   * List the folder. No index: a file added or removed outside the app shows up
-   * on the next read, and there is nothing to migrate or repair.
+   * Every recording, through subfolders, newest first.
+   *
+   * No index: a file added or removed outside the app shows up on the next read,
+   * and there is nothing to migrate or repair. The folder UI reads one level at
+   * a time through `recordings:browse`; this flat view is what anything wanting
+   * "the newest recording" should ask for.
    */
   ipcMain.handle('recordings:list', async (): Promise<RecordingListItem[]> => {
-    const dir = getRecordingsDir();
-    let names: string[];
-    try {
-      names = await readdir(dir);
-    } catch {
-      // A missing folder is an empty library, not an error (AC-2).
-      return [];
-    }
-
-    const items: RecordingListItem[] = [];
-    for (const name of names) {
-      // .part files are in-flight or unrecovered, not library content.
-      if (!isPlayable(name)) continue;
-      const filePath = join(dir, name);
-      try {
-        const info = await stat(filePath);
-        if (!info.isFile()) continue;
-        items.push({
-          fileName: name,
-          filePath,
-          playbackUrl: `${RECORDING_SCHEME}://f/${encodeURIComponent(name)}`,
-          modifiedAt: info.mtime.toISOString(),
-          sizeBytes: info.size,
-        });
-      } catch {
-        // Vanished between readdir and stat. Skip it rather than fail the list.
-      }
-    }
-
+    const items = await collectRecordings('');
     // Modified time, not birth time: a recovered recording was renamed from .part,
     // so its birth time predates the content while mtime reflects when it finished.
     items.sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
     return items;
+  });
+
+  /**
+   * One folder's contents: what the recordings window shows at a given level.
+   *
+   * Folders first and alphabetical, recordings newest first -- folders are a
+   * place you are looking for, recordings are something you just made.
+   */
+  ipcMain.handle('recordings:browse', async (_e, relativeDir: unknown): Promise<FolderListing> => {
+    const dir = resolveRelative('recordings:browse', relativeDir ?? '');
+    const rel = dir === resolve(getRecordingsDir()) ? '' : relativeOf(dir);
+
+    const entries = await readdir(dir, { withFileTypes: true }).catch(() => null);
+    if (entries === null) {
+      // A missing folder is an empty listing, not an error (AC-2). It also
+      // happens when a folder is deleted in Explorer while the UI sits in it.
+      return { path: rel, name: rel ? rel.split('/').pop() ?? rel : basename(getRecordingsDir()), folders: [], files: [] };
+    }
+
+    const folders: FolderEntry[] = [];
+    const files: RecordingListItem[] = [];
+    for (const entry of entries) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        const totals = await folderTotals(full);
+        folders.push({
+          name: entry.name,
+          path: rel ? `${rel}/${entry.name}` : entry.name,
+          itemCount: totals.count,
+          sizeBytes: totals.size,
+          modifiedAt: new Date(totals.newest || Date.now()).toISOString(),
+        });
+        continue;
+      }
+      // .part files are in-flight or unrecovered, not library content.
+      if (!entry.isFile() || !isPlayable(entry.name)) continue;
+      const info = await stat(full).catch(() => null);
+      // Vanished between readdir and stat. Skip it rather than fail the listing.
+      if (!info) continue;
+      const relativePath = rel ? `${rel}/${entry.name}` : entry.name;
+      files.push({
+        fileName: entry.name,
+        filePath: full,
+        relativePath,
+        playbackUrl: playbackUrlFor(relativePath),
+        modifiedAt: info.mtime.toISOString(),
+        sizeBytes: info.size,
+      });
+    }
+
+    folders.sort(byName);
+    files.sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
+    return {
+      path: rel,
+      name: rel ? (rel.split('/').pop() ?? rel) : basename(getRecordingsDir()),
+      folders,
+      files,
+    };
+  });
+
+  ipcMain.handle('recordings:folders', (): Promise<FolderEntry[]> => allFolders());
+
+  ipcMain.handle(
+    'recordings:create-folder',
+    async (_e, parent: unknown, name: unknown): Promise<string> => {
+      if (typeof name !== 'string' || name.trim().length === 0) {
+        fail('recordings:create-folder', new Error('Give the folder a name'));
+      }
+      const parentRel = typeof parent === 'string' ? parent.replace(/^\/+|\/+$/g, '') : '';
+      // Joined and validated as one path, so a name containing a separator is
+      // refused rather than quietly creating two levels.
+      const rel = parentRel ? `${parentRel}/${name.trim()}` : name.trim();
+      const target = resolveRelative('recordings:create-folder', rel);
+      if (existsSync(target)) {
+        fail('recordings:create-folder', new Error(`There is already something called "${name}" here`));
+      }
+      try {
+        mkdirSync(target, { recursive: true });
+      } catch (err) {
+        fail('recordings:create-folder', err);
+      }
+      return relativeOf(target);
+    },
+  );
+
+  /**
+   * Move a recording into a folder.
+   *
+   * Never overwrites, and never touches a recording being written -- the same
+   * two rules the delete handler lives by, for the same reasons.
+   */
+  ipcMain.handle(
+    'recordings:move',
+    async (_e, filePath: unknown, targetDir: unknown): Promise<string> => {
+      const source = resolveInsideRecordings('recordings:move', filePath);
+      const dir = resolveRelative('recordings:move', targetDir ?? '');
+      for (const rec of active.values()) {
+        if (resolve(rec.finalPath) === source || resolve(rec.partPath) === source) {
+          fail('recordings:move', new Error('That recording is still being written'));
+        }
+      }
+      if (!existsSync(dir)) {
+        fail('recordings:move', new Error('That folder is gone'));
+      }
+      const destination = join(dir, basename(source));
+      if (destination === source) return source;
+      if (existsSync(destination)) {
+        fail('recordings:move', new Error('A recording with that name is already in that folder'));
+      }
+      try {
+        await rename(source, destination);
+      } catch (err) {
+        fail('recordings:move', err);
+      }
+      return destination;
+    },
+  );
+
+  ipcMain.handle('recordings:reveal-folder', (_e, relativeDir: unknown): void => {
+    const dir = resolveRelative('recordings:reveal-folder', relativeDir ?? '');
+    // openPath rather than showItemInFolder: this opens the folder itself,
+    // where showItemInFolder would open its parent with it selected.
+    void shell.openPath(dir);
   });
 
   ipcMain.handle(

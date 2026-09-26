@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { RecordingListItem } from '../../shared/types.js';
+import type { FolderEntry, FolderListing, RecordingListItem } from '../../shared/types.js';
+import {
+  BackIcon,
+  FolderIcon,
+  FolderPlusIcon,
+  ForwardIcon,
+  UpIcon,
+} from './icons.js';
 
 function formatSize(bytes: number): string {
   if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
@@ -176,100 +183,279 @@ function useDurations(items: RecordingListItem[]): {
   return { durations, thumbs, observe };
 }
 
+
 export interface LibraryProps {
   /** Changes when a recording finishes saving; the existing signal, not a new one. */
   refreshKey: unknown;
 }
 
+/**
+ * Where the browser is looking.
+ *
+ * `null` is the top: a single card for the recordings folder, which is what the
+ * app has instead of showing someone their whole Videos folder. Everything else
+ * is a path relative to the recordings folder, `''` being the folder itself.
+ * There is deliberately no way to express anything above it.
+ */
+type Place = string | null;
+
+const HOME: Place = null;
+
+/** `Lectures/Week 1` -> `Lectures`; the recordings folder -> the top. */
+function parentOf(place: Place): Place {
+  if (place === null) return null;
+  if (place === '') return HOME;
+  const cut = place.lastIndexOf('/');
+  return cut === -1 ? '' : place.slice(0, cut);
+}
+
 export default function Library({ refreshKey }: LibraryProps): React.JSX.Element {
-  const [items, setItems] = useState<RecordingListItem[] | null>(null);
+  // Browser history, not a single path: back and forward mean what they mean
+  // everywhere else, and the first entry being HOME is what stops back from
+  // ever climbing out of the recordings folder.
+  const [history, setHistory] = useState<Place[]>([HOME]);
+  const [cursor, setCursor] = useState(0);
+  const place = history[cursor] ?? HOME;
+
+  const [listing, setListing] = useState<FolderListing | null>(null);
+  const [folders, setFolders] = useState<FolderEntry[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmingPermanent, setConfirmingPermanent] = useState(false);
-  const [expanded, setExpanded] = useState(false);
-  const { durations, thumbs, observe } = useDurations(items ?? []);
+  const [newFolder, setNewFolder] = useState<string | null>(null);
+  // Remembered, because the crumb for the recordings folder has to be nameable
+  // from inside a subfolder, where the listing describes the subfolder instead.
+  const [rootName, setRootName] = useState('Capturio');
+  const { durations, thumbs, observe } = useDurations(listing?.files ?? []);
   // Derived from the element itself, not from the file name: the only reliable
   // signal is what the decoder reports once metadata is in.
   const [unindexed, setUnindexed] = useState(false);
   const playerRef = useRef<HTMLVideoElement>(null);
+  const newFolderRef = useRef<HTMLInputElement>(null);
 
   // A recording is starting and this window is being hidden. Hiding does not
   // stop playback, and whatever is playing here would be recorded.
   useEffect(() => window.api.onSuspendPlayback(() => playerRef.current?.pause()), []);
 
-  const refresh = useCallback(async (): Promise<RecordingListItem[]> => {
-    try {
-      const list = await window.api.listRecordings();
-      setItems(list);
-      return list;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      setItems([]);
-      return [];
-    }
-  }, []);
+  // Bumped by anything that changes the folder, so one effect owns the read and
+  // there is no second path that can leave the view stale.
+  const [reloadKey, setReloadKey] = useState(0);
+  const reload = useCallback(() => setReloadKey((n) => n + 1), []);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const list = await window.api.listRecordings().catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
-        return [] as RecordingListItem[];
-      });
-      if (!cancelled) setItems(list);
+      try {
+        // The top still reads the recordings folder: its card shows what is inside.
+        const next = await window.api.browseRecordings(place ?? '');
+        if (cancelled) return;
+        setListing(next);
+        if (next.path === '') setRootName(next.name);
+      } catch (err) {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : String(err));
+        setListing({ path: place ?? '', name: 'Recordings', folders: [], files: [] });
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [refreshKey]);
+  }, [place, refreshKey, reloadKey]);
 
-  // A refresh is not a reset. `current` is derived, so a file that disappears
-  // simply resolves to null and the player unmounts -- no effect needed, and the
-  // still-present selection keeps playing across a refresh.
-  const current = items?.find((i) => i.filePath === selected) ?? null;
+  // Only for the "move to" menu, so it is read when the folders could have
+  // changed rather than on every navigation.
+  useEffect(() => {
+    window.api
+      .listFolders()
+      .then(setFolders)
+      .catch(() => undefined);
+  }, [listing]);
 
-  // Show the three most recent by default. A long folder of tiles would push the
-  // record button off screen, and the newest recordings are the ones anyone
-  // actually reaches for.
-  const COLLAPSED_COUNT = 3;
+  useEffect(() => {
+    if (newFolder !== null) newFolderRef.current?.focus();
+  }, [newFolder]);
 
-  const select = useCallback((path: string) => {
-    setSelected(path);
-    setConfirmingPermanent(false);
-  }, []);
-
-  const remove = useCallback(
-    async (permanent: boolean) => {
-      if (!current) return;
-      setError(null);
-      try {
-        await window.api.deleteRecording(current.filePath, permanent);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-      }
-      await refresh();
+  const go = useCallback(
+    (next: Place) => {
+      setSelected(null);
+      setNewFolder(null);
+      setHistory((h) => [...h.slice(0, cursor + 1), next]);
+      setCursor((c) => c + 1);
     },
-    [current, refresh],
+    [cursor],
   );
 
+  const step = useCallback(
+    (delta: number) => {
+      setSelected(null);
+      setNewFolder(null);
+      setCursor((c) => Math.min(history.length - 1, Math.max(0, c + delta)));
+    },
+    [history.length],
+  );
+
+  const current = listing?.files.find((f) => f.filePath === selected) ?? null;
+
   const runAction = useCallback(
-    async (fn: () => Promise<void>) => {
+    async (fn: () => Promise<unknown>) => {
       setError(null);
       try {
         await fn();
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
-        await refresh();
       }
+      reload();
     },
-    [refresh],
+    [reload],
   );
 
-  if (items === null) return <section className="library" aria-busy="true" />;
+  const remove = useCallback(
+    async (permanent: boolean) => {
+      if (!current) return;
+      setSelected(null);
+      await runAction(() => window.api.deleteRecording(current.filePath, permanent));
+    },
+    [current, runAction],
+  );
+
+  const createFolder = useCallback(async () => {
+    const name = (newFolder ?? '').trim();
+    if (name.length === 0) {
+      setNewFolder(null);
+      return;
+    }
+    setNewFolder(null);
+    await runAction(() => window.api.createFolder(place ?? '', name));
+  }, [newFolder, place, runAction]);
+
+  const totals = listing
+    ? {
+        count: listing.files.length + listing.folders.reduce((n, f) => n + f.itemCount, 0),
+        size: listing.files.reduce((n, f) => n + f.sizeBytes, 0) +
+          listing.folders.reduce((n, f) => n + f.sizeBytes, 0),
+      }
+    : { count: 0, size: 0 };
+
+  if (listing === null) return <section className="library" aria-busy="true" />;
+
+  const crumbs = place === null || place === '' ? [] : place.split('/');
 
   return (
     <section className="library">
-      <h2 className="library__heading">Recordings</h2>
+      <div className="browser">
+        <div className="browser__nav">
+          <button
+            type="button"
+            className="icon"
+            onClick={() => step(-1)}
+            disabled={cursor === 0}
+            title="Back"
+            aria-label="Back"
+          >
+            <BackIcon />
+          </button>
+          <button
+            type="button"
+            className="icon"
+            onClick={() => step(1)}
+            disabled={cursor >= history.length - 1}
+            title="Forward"
+            aria-label="Forward"
+          >
+            <ForwardIcon />
+          </button>
+          <button
+            type="button"
+            className="icon"
+            onClick={() => go(parentOf(place))}
+            disabled={place === null}
+            title="Up one level"
+            aria-label="Up one level"
+          >
+            <UpIcon />
+          </button>
+        </div>
+
+        <nav className="crumbs" aria-label="Location">
+          <button type="button" className="crumbs__item" onClick={() => go(HOME)}>
+            Recordings
+          </button>
+          {place !== null && (
+            <>
+              <span className="crumbs__sep" aria-hidden="true">
+                ›
+              </span>
+              <button type="button" className="crumbs__item" onClick={() => go('')}>
+                {rootName}
+              </button>
+            </>
+          )}
+          {crumbs.map((part, i) => (
+            <span key={crumbs.slice(0, i + 1).join('/')}>
+              <span className="crumbs__sep" aria-hidden="true">
+                ›
+              </span>
+              <button
+                type="button"
+                className="crumbs__item"
+                onClick={() => go(crumbs.slice(0, i + 1).join('/'))}
+                aria-current={i === crumbs.length - 1 ? 'page' : undefined}
+              >
+                {part}
+              </button>
+            </span>
+          ))}
+        </nav>
+
+        {place !== null && (
+          <div className="browser__actions">
+            <button
+              type="button"
+              className="link"
+              onClick={() => setNewFolder('')}
+              title="Create a folder here"
+            >
+              <FolderPlusIcon />
+              New folder
+            </button>
+            <button
+              type="button"
+              className="link"
+              onClick={() => void runAction(() => window.api.revealFolder(place))}
+            >
+              Open in Explorer
+            </button>
+          </div>
+        )}
+      </div>
+
+      {newFolder !== null && (
+        <form
+          className="newFolder"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void createFolder();
+          }}
+        >
+          <input
+            ref={newFolderRef}
+            className="newFolder__input"
+            value={newFolder}
+            placeholder="Folder name"
+            onChange={(e) => setNewFolder(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setNewFolder(null);
+            }}
+            aria-label="Folder name"
+          />
+          <button type="submit" className="link">
+            Create
+          </button>
+          <button type="button" className="link" onClick={() => setNewFolder(null)}>
+            Cancel
+          </button>
+        </form>
+      )}
 
       {error && (
         <p className="library__error" role="alert">
@@ -277,11 +463,32 @@ export default function Library({ refreshKey }: LibraryProps): React.JSX.Element
         </p>
       )}
 
-      {items.length === 0 ? (
-        <p className="library__empty">
-          Nothing recorded yet. Press the red button to record your screen, and it will show up
-          here.
-        </p>
+      {/* The top is one card, not a file list: the recordings folder is the only
+          thing in it, and showing it as a folder is what makes the level below
+          make sense. */}
+      {place === null ? (
+        totals.count === 0 ? (
+          <p className="library__empty">
+            Nothing recorded yet. Press the red button on the bar, and your recordings will show up
+            here.
+          </p>
+        ) : (
+          <ul className="folders folders--home">
+            <li>
+              <button type="button" className="folder" onClick={() => go('')}>
+                <span className="folder__icon" aria-hidden="true">
+                  <FolderIcon />
+                </span>
+                <span className="folder__name">{listing.name}</span>
+                <span className="folder__meta">
+                  {totals.count} {totals.count === 1 ? 'recording' : 'recordings'}
+                  <span className="tile__sep" aria-hidden="true" />
+                  {formatSize(totals.size)}
+                </span>
+              </button>
+            </li>
+          </ul>
+        )
       ) : (
         <>
           {current && (
@@ -311,6 +518,35 @@ export default function Library({ refreshKey }: LibraryProps): React.JSX.Element
               <div className="player__bar">
                 <span className="player__name">{current.fileName}</span>
                 <div className="player__actions">
+                  {/* Moving is a menu rather than a drag: a drag needs a target on
+                      screen, and the folder you want is usually not the one you
+                      are looking at. */}
+                  <label className="moveTo">
+                    Move to
+                    <select
+                      className="moveTo__select"
+                      value=""
+                      onChange={(e) => {
+                        const target = e.target.value;
+                        if (target === '') return;
+                        const dir = target === '/' ? '' : target;
+                        void runAction(async () => {
+                          await window.api.moveRecording(current.filePath, dir);
+                          setSelected(null);
+                        });
+                      }}
+                    >
+                      <option value="">Choose a folder…</option>
+                      {place !== '' && <option value="/">{rootName}</option>}
+                      {folders
+                        .filter((f) => f.path !== place)
+                        .map((f) => (
+                          <option key={f.path} value={f.path}>
+                            {f.path}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
                   <button
                     type="button"
                     className="link"
@@ -323,7 +559,9 @@ export default function Library({ refreshKey }: LibraryProps): React.JSX.Element
                   <button
                     type="button"
                     className="link"
-                    onClick={() => void runAction(() => window.api.revealRecording(current.filePath))}
+                    onClick={() =>
+                      void runAction(() => window.api.revealRecording(current.filePath))
+                    }
                   >
                     Show in folder
                   </button>
@@ -346,53 +584,73 @@ export default function Library({ refreshKey }: LibraryProps): React.JSX.Element
             </div>
           )}
 
-          <ul className="tiles">
-            {(expanded ? items : items.slice(0, COLLAPSED_COUNT)).map((item) => {
-              const dur = durations[item.filePath];
-              return (
-                <li key={item.filePath} ref={(el) => observe(item.filePath, el)}>
-                  <button
-                    type="button"
-                    className={`tile ${selected === item.filePath ? 'is-selected' : ''}`}
-                    onClick={() => select(item.filePath)}
-                    aria-pressed={selected === item.filePath}
-                  >
-                    {/* The placeholder keeps its size when no image exists, so
-                        tiles never reflow as thumbnails arrive. */}
-                    {thumbs[item.filePath] ? (
-                      <img className="tile__thumb" src={thumbs[item.filePath]} alt="" />
-                    ) : (
-                      <span className="tile__thumb" aria-hidden="true" />
-                    )}
-                    <span className="tile__name">{item.fileName}</span>
-                    <span className="tile__meta">
-                      {formatWhen(item.modifiedAt)}
-                      <span className="tile__sep" aria-hidden="true" />
-                      {formatSize(item.sizeBytes)}
-                      {dur !== undefined && formatDuration(dur) && (
+          {listing.folders.length > 0 && (
+            <ul className="folders">
+              {listing.folders.map((folder) => (
+                <li key={folder.path}>
+                  <button type="button" className="folder" onClick={() => go(folder.path)}>
+                    <span className="folder__icon" aria-hidden="true">
+                      <FolderIcon />
+                    </span>
+                    <span className="folder__name">{folder.name}</span>
+                    <span className="folder__meta">
+                      {folder.itemCount} {folder.itemCount === 1 ? 'recording' : 'recordings'}
+                      {folder.itemCount > 0 && (
                         <>
                           <span className="tile__sep" aria-hidden="true" />
-                          {formatDuration(dur)}
+                          {formatSize(folder.sizeBytes)}
                         </>
                       )}
                     </span>
                   </button>
                 </li>
-              );
-            })}
-          </ul>
+              ))}
+            </ul>
+          )}
 
-          {items.length > COLLAPSED_COUNT && (
-            <button
-              type="button"
-              className="library__more"
-              onClick={() => setExpanded((e) => !e)}
-              aria-expanded={expanded}
-            >
-              {expanded
-                ? `Show fewer`
-                : `Show all ${items.length} recordings`}
-            </button>
+          {listing.files.length === 0 && listing.folders.length === 0 ? (
+            <p className="library__empty">
+              This folder is empty. Recordings you move here will show up in it.
+            </p>
+          ) : (
+            <ul className="tiles">
+              {listing.files.map((item) => {
+                const dur = durations[item.filePath];
+                return (
+                  <li key={item.filePath} ref={(el) => observe(item.filePath, el)}>
+                    <button
+                      type="button"
+                      className={`tile ${selected === item.filePath ? 'is-selected' : ''}`}
+                      onClick={() => {
+                        setSelected(item.filePath);
+                        setConfirmingPermanent(false);
+                      }}
+                      aria-pressed={selected === item.filePath}
+                    >
+                      {/* The placeholder keeps its size when no image exists, so
+                          tiles never reflow as thumbnails arrive. */}
+                      {thumbs[item.filePath] ? (
+                        <img className="tile__thumb" src={thumbs[item.filePath]} alt="" />
+                      ) : (
+                        <span className="tile__thumb" aria-hidden="true" />
+                      )}
+                      <span className="tile__name">{item.fileName}</span>
+                      <span className="tile__meta">
+                        {formatWhen(item.modifiedAt)}
+                        <span className="tile__sep" aria-hidden="true" />
+                        {formatSize(item.sizeBytes)}
+                        {dur !== undefined && formatDuration(dur) && (
+                          <>
+                            <span className="tile__sep" aria-hidden="true" />
+                            {formatDuration(dur)}
+                          </>
+                        )}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </>
       )}

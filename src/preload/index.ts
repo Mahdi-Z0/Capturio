@@ -10,6 +10,8 @@ import type {
   QualityPreset,
   Recording,
   RecordingListItem,
+  FolderEntry,
+  FolderListing,
 } from '../shared/types.js';
 
 /**
@@ -56,6 +58,16 @@ const api = {
     ipcRenderer.invoke('recordings:delete', filePath, permanent),
   openRecordingExternally: (filePath: string): Promise<void> =>
     ipcRenderer.invoke('recordings:open-external', filePath),
+
+  browseRecordings: (relativeDir: string): Promise<FolderListing> =>
+    ipcRenderer.invoke('recordings:browse', relativeDir),
+  listFolders: (): Promise<FolderEntry[]> => ipcRenderer.invoke('recordings:folders'),
+  createFolder: (parent: string, name: string): Promise<string> =>
+    ipcRenderer.invoke('recordings:create-folder', parent, name),
+  moveRecording: (filePath: string, targetDir: string): Promise<string> =>
+    ipcRenderer.invoke('recordings:move', filePath, targetDir),
+  revealFolder: (relativeDir: string): Promise<void> =>
+    ipcRenderer.invoke('recordings:reveal-folder', relativeDir),
 
   announceRecording: (filePath: string): void => {
     ipcRenderer.send('recordings:changed', filePath);
