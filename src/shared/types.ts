@@ -318,6 +318,12 @@ export interface RecorderApi {
   announceRecording(filePath: string): void;
   /** Recordings window: listen for new recordings. Returns an unsubscribe. */
   onRecordingsChanged(handler: (filePath: string) => void): () => void;
+  /**
+   * Recordings window: stop playing, a recording is about to start. Returns an
+   * unsubscribe. The window is hidden at the same moment, and a hidden window
+   * keeps playing — its sound would land in the recording being made.
+   */
+  onSuspendPlayback(handler: () => void): () => void;
 
   /** Control-bar window: grow or shrink to fit what it is showing. */
   resizeBar(height: number): void;

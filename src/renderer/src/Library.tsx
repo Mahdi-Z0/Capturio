@@ -191,6 +191,11 @@ export default function Library({ refreshKey }: LibraryProps): React.JSX.Element
   // Derived from the element itself, not from the file name: the only reliable
   // signal is what the decoder reports once metadata is in.
   const [unindexed, setUnindexed] = useState(false);
+  const playerRef = useRef<HTMLVideoElement>(null);
+
+  // A recording is starting and this window is being hidden. Hiding does not
+  // stop playback, and whatever is playing here would be recorded.
+  useEffect(() => window.api.onSuspendPlayback(() => playerRef.current?.pause()), []);
 
   const refresh = useCallback(async (): Promise<RecordingListItem[]> => {
     try {
@@ -284,6 +289,7 @@ export default function Library({ refreshKey }: LibraryProps): React.JSX.Element
               {/* Custom protocol, never file:// -- the CSP forbids it. */}
               <video
                 key={current.filePath}
+                ref={playerRef}
                 className="player__video"
                 src={current.playbackUrl}
                 controls

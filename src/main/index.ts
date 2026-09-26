@@ -1055,6 +1055,11 @@ function selectRegion(): Promise<RegionRect | null> {
     return Promise.resolve(null);
   }
 
+  // Before the overlay, not after the recording starts: a region is dragged out
+  // over whatever is on screen, and the recordings window sitting in the middle
+  // of it would be part of what there is to choose from.
+  hideLibrary();
+
   const { bounds } = screen.getPrimaryDisplay();
   return new Promise((resolve) => {
     const win = new BrowserWindow({
@@ -1440,6 +1445,9 @@ function registerHudRelay(): void {
     if (state?.recording !== recordingNow) {
       recordingNow = Boolean(state?.recording);
       trayRefresh?.();
+      // The recordings window is the one window capture can see. It goes away
+      // for the duration, and the bar's library button brings it back.
+      if (recordingNow) hideLibrary();
       // A recording started by the hotkey while the bar was hidden needs its
       // indicator back: the bar is the only thing showing that this is recording.
       if (recordingNow && barWindow && !barWindow.isDestroyed() && !barWindow.isVisible()) {
@@ -1502,11 +1510,38 @@ function createLibraryWindow(): void {
 
 function openLibrary(): void {
   if (libraryWindow && !libraryWindow.isDestroyed()) {
+    // It may be hidden rather than closed, since recording hides it, and neither
+    // restore() nor focus() brings a hidden window back.
+    libraryWindow.webContents.setAudioMuted(false);
     if (libraryWindow.isMinimized()) libraryWindow.restore();
+    if (!libraryWindow.isVisible()) libraryWindow.show();
     libraryWindow.focus();
     return;
   }
   createLibraryWindow();
+}
+
+/**
+ * Get the recordings window out of the way of a recording.
+ *
+ * Not tidiness. Every always-on-top window here is excluded from capture, but
+ * this one is an ordinary window and cannot be: left open it would be filmed,
+ * and a recorder that films its own library is worse than one with no library.
+ *
+ * Playback stops too. A hidden window keeps playing, so the recording someone
+ * was watching would be heard inside the one they just started.
+ *
+ * It is not brought back afterwards: a window appearing by itself the moment a
+ * recording stops is the interruption this bar exists to avoid. The bar's
+ * library button is the way back.
+ */
+function hideLibrary(): void {
+  if (!libraryWindow || libraryWindow.isDestroyed() || !libraryWindow.isVisible()) return;
+  libraryWindow.webContents.send('library:suspend');
+  // The pause is what the user sees; the mute is the guarantee, because a
+  // renderer that never received that message must still be silent in the file.
+  libraryWindow.webContents.setAudioMuted(true);
+  libraryWindow.hide();
 }
 
 // Before anything else: from here on, whatever the app reports also lands on

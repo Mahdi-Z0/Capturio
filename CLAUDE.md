@@ -332,6 +332,25 @@ without touching a capture in progress. `App.tsx` is now only the recordings win
 bar's library button, and it learns about new files over `recordings:changed` because they are saved
 by a different window.
 
+**The recordings window hides itself for the duration of a recording** (`hideLibrary()`), both when
+recording starts and before the region overlay opens. It is the one window here that is *not*
+content-protected — an ordinary window cannot be — so leaving it open films it. It is **not** brought
+back afterwards: a window appearing by itself the moment a recording stops is the interruption this
+bar exists to avoid. The bar's library button is the way back, and `openLibrary()` must therefore
+`show()` as well as `focus()`, since neither `focus()` nor `restore()` reveals a hidden window.
+
+**Hiding a window does not stop its media.** The recordings window is told to pause over
+`library:suspend`, and its `webContents` is muted as well — the pause is what the user sees, the mute
+is the guarantee for a renderer that never got the message. Without both, the recording someone was
+watching is audible inside the one they just started. Measured 2026-09-26: recording with computer
+audio on, started while a recording was playing in the library, peak amplitude **0.0000** across the
+whole file; the same measurement on a recording of a 440 Hz tone reads 0.2726, so the zero is silence
+and not a broken measurement.
+
+**`document.visibilityState` is not "is this window on screen".** Electron also reports `hidden` for a
+window that is merely covered by another, which made a passing implementation look broken for an hour.
+Ask Windows instead — `IsWindowVisible` over `EnumWindows`, matched by window size.
+
 Ctrl+Shift+R starts and stops. The bar decides what `toggle` means, since only it knows what is
 currently selected.
 

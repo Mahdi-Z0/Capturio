@@ -65,6 +65,11 @@ const api = {
     ipcRenderer.on('recordings:changed', listener);
     return () => ipcRenderer.removeListener('recordings:changed', listener);
   },
+  onSuspendPlayback: (handler: () => void): (() => void) => {
+    const listener = (): void => handler();
+    ipcRenderer.on('library:suspend', listener);
+    return () => ipcRenderer.removeListener('library:suspend', listener);
+  },
 
   resizeBar: (height: number): void => {
     ipcRenderer.send('bar:resize', height);
