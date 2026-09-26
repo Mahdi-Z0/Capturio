@@ -190,3 +190,14 @@ export function UpIcon(): React.JSX.Element {
     </svg>
   );
 }
+
+/** A bin. Deliberately plain: it appears on folder cards, where anything busier
+ * competes with the folder itself. */
+export function TrashIcon(): React.JSX.Element {
+  return (
+    <svg {...base}>
+      <path d="M3.5 5.5h13M8 5.5V4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5" />
+      <path d="M5.5 5.5 6.2 16a1 1 0 0 0 1 .9h5.6a1 1 0 0 0 1-.9l.7-10.5" />
+    </svg>
+  );
+}

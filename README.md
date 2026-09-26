@@ -22,9 +22,11 @@ in folder** — clicking the card itself shows it in the folder. Nothing opens o
 puts itself away after a few seconds.
 
 Recordings are saved to `Videos\Capturio` as WebM, and the built-in library lets you watch, reveal,
-organise and delete them. It browses like a file window — back, forward, up and a breadcrumb — and
-you can make your own subfolders and move recordings into them. It never goes above the recordings
-folder. Deleting moves a file to the Recycle Bin unless you explicitly choose otherwise.
+organise and delete them. It browses like a file window — back, forward, up and a breadcrumb —
+opening in the recordings folder and never going above it. Click a recording to select it and see
+what you can do with it; double-click to play it. Make your own folders, then drag recordings into
+them (or onto the breadcrumb to move them back out). Deleting a recording or a folder moves it to the
+Recycle Bin unless you explicitly choose otherwise.
 
 ## Using it
 

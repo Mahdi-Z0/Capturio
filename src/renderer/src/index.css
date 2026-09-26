@@ -874,10 +874,17 @@ body {
   gap: 10px;
 }
 
-/* The top level shows one folder, so it gets room rather than being stretched
-   across the grid. */
-.folders--home {
-  grid-template-columns: minmax(230px, 320px);
+/* The cell, not the card, is the drop target: the delete button sits in it too,
+   and a recording dropped anywhere on the cell means the same thing. */
+.folderCell {
+  position: relative;
+  display: flex;
+  border-radius: 9px;
+}
+
+.folderCell.is-dropTarget .folder {
+  border-color: #6f8cff;
+  background: rgba(111, 140, 255, 0.1);
 }
 
 .folder {
@@ -885,7 +892,8 @@ body {
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 12px;
+  /* Room on the right for the delete button that appears on hover. */
+  padding: 12px 44px 12px 12px;
   border: 1px solid var(--edge);
   border-radius: 9px;
   background: transparent;
@@ -899,6 +907,55 @@ body {
 .folder:hover {
   border-color: #3b3f52;
   background: #1a1c25;
+}
+
+/* Out of the way until the folder is pointed at, because deleting a folder of
+   recordings should never be the easiest thing on the card to hit. */
+.folder__delete {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 7px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 110ms ease, color 110ms ease, background-color 110ms ease;
+}
+
+.folderCell:hover .folder__delete,
+.folder__delete:focus-visible,
+.folder__delete.is-confirming {
+  opacity: 1;
+}
+
+.folder__delete:hover {
+  color: #ff8a8a;
+  background: rgba(255, 138, 138, 0.12);
+}
+
+.folder__delete.is-confirming {
+  color: #ff8a8a;
+  border-color: rgba(255, 138, 138, 0.5);
+  /* Opaque while it covers the folder's own size line. */
+  background: #2b1f24;
+}
+
+/* A crumb is a drop target as well as a link: dragging onto one moves a
+   recording back out of a subfolder. */
+.crumbs__item.is-dropTarget {
+  background: rgba(111, 140, 255, 0.18);
+  color: var(--ink);
+  outline: 1px solid #6f8cff;
 }
 
 .folder__icon {

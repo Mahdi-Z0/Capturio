@@ -5,6 +5,7 @@ import {
   FolderIcon,
   FolderPlusIcon,
   ForwardIcon,
+  TrashIcon,
   UpIcon,
 } from './icons.js';
 
@@ -190,39 +191,44 @@ export interface LibraryProps {
 }
 
 /**
- * Where the browser is looking.
+ * `Lectures/Week 1` -> `Lectures`; the recordings folder itself -> `null`.
  *
- * `null` is the top: a single card for the recordings folder, which is what the
- * app has instead of showing someone their whole Videos folder. Everything else
- * is a path relative to the recordings folder, `''` being the folder itself.
- * There is deliberately no way to express anything above it.
+ * `''` is the top and there is deliberately no way to express anything above it.
+ * The Videos folder is not shown: it holds exactly one folder and nothing can be
+ * saved into it, so a level that only ever contains one card is a level in the
+ * way.
  */
-type Place = string | null;
-
-const HOME: Place = null;
-
-/** `Lectures/Week 1` -> `Lectures`; the recordings folder -> the top. */
-function parentOf(place: Place): Place {
-  if (place === null) return null;
-  if (place === '') return HOME;
+function parentOf(place: string): string | null {
+  if (place === '') return null;
   const cut = place.lastIndexOf('/');
   return cut === -1 ? '' : place.slice(0, cut);
 }
 
+/** The drag payload: which recording is being dragged, by absolute path. */
+const DRAG_TYPE = 'application/x-capturio-recording';
+
 export default function Library({ refreshKey }: LibraryProps): React.JSX.Element {
   // Browser history, not a single path: back and forward mean what they mean
-  // everywhere else, and the first entry being HOME is what stops back from
-  // ever climbing out of the recordings folder.
-  const [history, setHistory] = useState<Place[]>([HOME]);
+  // everywhere else, and the first entry being the recordings folder is what
+  // stops back from ever climbing out of it.
+  const [history, setHistory] = useState<string[]>(['']);
   const [cursor, setCursor] = useState(0);
-  const place = history[cursor] ?? HOME;
+  const place = history[cursor] ?? '';
 
   const [listing, setListing] = useState<FolderListing | null>(null);
   const [folders, setFolders] = useState<FolderEntry[]>([]);
+  // Selecting and opening are different acts: one click picks a recording and
+  // offers what can be done with it, two clicks play it. Selecting used to play,
+  // which made every glance at the list start a video.
   const [selected, setSelected] = useState<string | null>(null);
+  const [playing, setPlaying] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmingPermanent, setConfirmingPermanent] = useState(false);
+  const [confirmingFolder, setConfirmingFolder] = useState<string | null>(null);
   const [newFolder, setNewFolder] = useState<string | null>(null);
+  // Which folder a dragged recording is currently over, so the target is visible
+  // before the drop rather than after it.
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
   // Remembered, because the crumb for the recordings folder has to be nameable
   // from inside a subfolder, where the listing describes the subfolder instead.
   const [rootName, setRootName] = useState('Capturio');
@@ -246,15 +252,14 @@ export default function Library({ refreshKey }: LibraryProps): React.JSX.Element
     let cancelled = false;
     void (async () => {
       try {
-        // The top still reads the recordings folder: its card shows what is inside.
-        const next = await window.api.browseRecordings(place ?? '');
+        const next = await window.api.browseRecordings(place);
         if (cancelled) return;
         setListing(next);
         if (next.path === '') setRootName(next.name);
       } catch (err) {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : String(err));
-        setListing({ path: place ?? '', name: 'Recordings', folders: [], files: [] });
+        setListing({ path: place, name: 'Recordings', folders: [], files: [] });
       }
     })();
     return () => {
@@ -275,26 +280,34 @@ export default function Library({ refreshKey }: LibraryProps): React.JSX.Element
     if (newFolder !== null) newFolderRef.current?.focus();
   }, [newFolder]);
 
+  /** Everything a navigation or a change to the folder invalidates. */
+  const clearSelection = useCallback(() => {
+    setSelected(null);
+    setPlaying(null);
+    setConfirmingPermanent(false);
+    setConfirmingFolder(null);
+    setNewFolder(null);
+  }, []);
+
   const go = useCallback(
-    (next: Place) => {
-      setSelected(null);
-      setNewFolder(null);
+    (next: string) => {
+      clearSelection();
       setHistory((h) => [...h.slice(0, cursor + 1), next]);
       setCursor((c) => c + 1);
     },
-    [cursor],
+    [clearSelection, cursor],
   );
 
   const step = useCallback(
     (delta: number) => {
-      setSelected(null);
-      setNewFolder(null);
+      clearSelection();
       setCursor((c) => Math.min(history.length - 1, Math.max(0, c + delta)));
     },
-    [history.length],
+    [clearSelection, history.length],
   );
 
   const current = listing?.files.find((f) => f.filePath === selected) ?? null;
+  const up = parentOf(place);
 
   const runAction = useCallback(
     async (fn: () => Promise<unknown>) => {
@@ -312,10 +325,18 @@ export default function Library({ refreshKey }: LibraryProps): React.JSX.Element
   const remove = useCallback(
     async (permanent: boolean) => {
       if (!current) return;
-      setSelected(null);
+      clearSelection();
       await runAction(() => window.api.deleteRecording(current.filePath, permanent));
     },
-    [current, runAction],
+    [clearSelection, current, runAction],
+  );
+
+  const moveTo = useCallback(
+    async (filePath: string, dir: string) => {
+      clearSelection();
+      await runAction(() => window.api.moveRecording(filePath, dir));
+    },
+    [clearSelection, runAction],
   );
 
   const createFolder = useCallback(async () => {
@@ -325,20 +346,37 @@ export default function Library({ refreshKey }: LibraryProps): React.JSX.Element
       return;
     }
     setNewFolder(null);
-    await runAction(() => window.api.createFolder(place ?? '', name));
+    await runAction(() => window.api.createFolder(place, name));
   }, [newFolder, place, runAction]);
 
-  const totals = listing
-    ? {
-        count: listing.files.length + listing.folders.reduce((n, f) => n + f.itemCount, 0),
-        size: listing.files.reduce((n, f) => n + f.sizeBytes, 0) +
-          listing.folders.reduce((n, f) => n + f.sizeBytes, 0),
-      }
-    : { count: 0, size: 0 };
+  /* --- Dragging a recording onto a folder -------------------------------------
+   * The same move as the menu, reached the way a file manager would do it. Every
+   * drop target is a folder path, so the crumb trail works as one too: dragging
+   * onto "Recordings" moves something back out of a subfolder. */
+
+  const dropProps = useCallback(
+    (dir: string) => ({
+      onDragOver: (e: React.DragEvent) => {
+        if (!e.dataTransfer.types.includes(DRAG_TYPE)) return;
+        // Without preventDefault the browser refuses the drop entirely.
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move' as const;
+        setDropTarget(dir);
+      },
+      onDragLeave: () => setDropTarget((t) => (t === dir ? null : t)),
+      onDrop: (e: React.DragEvent) => {
+        e.preventDefault();
+        setDropTarget(null);
+        const filePath = e.dataTransfer.getData(DRAG_TYPE);
+        if (filePath) void moveTo(filePath, dir);
+      },
+    }),
+    [moveTo],
+  );
 
   if (listing === null) return <section className="library" aria-busy="true" />;
 
-  const crumbs = place === null || place === '' ? [] : place.split('/');
+  const crumbs = place === '' ? [] : place.split('/');
 
   return (
     <section className="library">
@@ -367,8 +405,8 @@ export default function Library({ refreshKey }: LibraryProps): React.JSX.Element
           <button
             type="button"
             className="icon"
-            onClick={() => go(parentOf(place))}
-            disabled={place === null}
+            onClick={() => up !== null && go(up)}
+            disabled={up === null}
             title="Up one level"
             aria-label="Up one level"
           >
@@ -377,56 +415,54 @@ export default function Library({ refreshKey }: LibraryProps): React.JSX.Element
         </div>
 
         <nav className="crumbs" aria-label="Location">
-          <button type="button" className="crumbs__item" onClick={() => go(HOME)}>
-            Recordings
+          <button
+            type="button"
+            className={`crumbs__item ${dropTarget === '' ? 'is-dropTarget' : ''}`}
+            onClick={() => go('')}
+            aria-current={place === '' ? 'page' : undefined}
+            {...dropProps('')}
+          >
+            {rootName}
           </button>
-          {place !== null && (
-            <>
-              <span className="crumbs__sep" aria-hidden="true">
-                ›
+          {crumbs.map((part, i) => {
+            const path = crumbs.slice(0, i + 1).join('/');
+            return (
+              <span key={path}>
+                <span className="crumbs__sep" aria-hidden="true">
+                  ›
+                </span>
+                <button
+                  type="button"
+                  className={`crumbs__item ${dropTarget === path ? 'is-dropTarget' : ''}`}
+                  onClick={() => go(path)}
+                  aria-current={i === crumbs.length - 1 ? 'page' : undefined}
+                  {...dropProps(path)}
+                >
+                  {part}
+                </button>
               </span>
-              <button type="button" className="crumbs__item" onClick={() => go('')}>
-                {rootName}
-              </button>
-            </>
-          )}
-          {crumbs.map((part, i) => (
-            <span key={crumbs.slice(0, i + 1).join('/')}>
-              <span className="crumbs__sep" aria-hidden="true">
-                ›
-              </span>
-              <button
-                type="button"
-                className="crumbs__item"
-                onClick={() => go(crumbs.slice(0, i + 1).join('/'))}
-                aria-current={i === crumbs.length - 1 ? 'page' : undefined}
-              >
-                {part}
-              </button>
-            </span>
-          ))}
+            );
+          })}
         </nav>
 
-        {place !== null && (
-          <div className="browser__actions">
-            <button
-              type="button"
-              className="link"
-              onClick={() => setNewFolder('')}
-              title="Create a folder here"
-            >
-              <FolderPlusIcon />
-              New folder
-            </button>
-            <button
-              type="button"
-              className="link"
-              onClick={() => void runAction(() => window.api.revealFolder(place))}
-            >
-              Open in Explorer
-            </button>
-          </div>
-        )}
+        <div className="browser__actions">
+          <button
+            type="button"
+            className="link"
+            onClick={() => setNewFolder('')}
+            title="Create a folder here"
+          >
+            <FolderPlusIcon />
+            New folder
+          </button>
+          <button
+            type="button"
+            className="link"
+            onClick={() => void runAction(() => window.api.revealFolder(place))}
+          >
+            Open in Explorer
+          </button>
+        </div>
       </div>
 
       {newFolder !== null && (
@@ -463,36 +499,12 @@ export default function Library({ refreshKey }: LibraryProps): React.JSX.Element
         </p>
       )}
 
-      {/* The top is one card, not a file list: the recordings folder is the only
-          thing in it, and showing it as a folder is what makes the level below
-          make sense. */}
-      {place === null ? (
-        totals.count === 0 ? (
-          <p className="library__empty">
-            Nothing recorded yet. Press the red button on the bar, and your recordings will show up
-            here.
-          </p>
-        ) : (
-          <ul className="folders folders--home">
-            <li>
-              <button type="button" className="folder" onClick={() => go('')}>
-                <span className="folder__icon" aria-hidden="true">
-                  <FolderIcon />
-                </span>
-                <span className="folder__name">{listing.name}</span>
-                <span className="folder__meta">
-                  {totals.count} {totals.count === 1 ? 'recording' : 'recordings'}
-                  <span className="tile__sep" aria-hidden="true" />
-                  {formatSize(totals.size)}
-                </span>
-              </button>
-            </li>
-          </ul>
-        )
-      ) : (
-        <>
-          {current && (
-            <div className="player">
+      {/* What can be done with the selected recording. The video appears only
+          once it has been opened, so picking something never starts playback. */}
+      {current && (
+        <div className="player">
+          {playing === current.filePath && (
+            <>
               {/* Custom protocol, never file:// -- the CSP forbids it. */}
               <video
                 key={current.filePath}
@@ -515,144 +527,193 @@ export default function Library({ refreshKey }: LibraryProps): React.JSX.Element
                   the scrubber will not work. New recordings seek normally.
                 </p>
               )}
-              <div className="player__bar">
-                <span className="player__name">{current.fileName}</span>
-                <div className="player__actions">
-                  {/* Moving is a menu rather than a drag: a drag needs a target on
-                      screen, and the folder you want is usually not the one you
-                      are looking at. */}
-                  <label className="moveTo">
-                    Move to
-                    <select
-                      className="moveTo__select"
-                      value=""
-                      onChange={(e) => {
-                        const target = e.target.value;
-                        if (target === '') return;
-                        const dir = target === '/' ? '' : target;
-                        void runAction(async () => {
-                          await window.api.moveRecording(current.filePath, dir);
-                          setSelected(null);
-                        });
-                      }}
-                    >
-                      <option value="">Choose a folder…</option>
-                      {place !== '' && <option value="/">{rootName}</option>}
-                      {folders
-                        .filter((f) => f.path !== place)
-                        .map((f) => (
-                          <option key={f.path} value={f.path}>
-                            {f.path}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
-                  <button
-                    type="button"
-                    className="link"
-                    onClick={() =>
-                      void runAction(() => window.api.openRecordingExternally(current.filePath))
-                    }
-                  >
-                    Open in player
-                  </button>
-                  <button
-                    type="button"
-                    className="link"
-                    onClick={() =>
-                      void runAction(() => window.api.revealRecording(current.filePath))
-                    }
-                  >
-                    Show in folder
-                  </button>
-                  <button type="button" className="link" onClick={() => void remove(false)}>
-                    Move to Recycle Bin
-                  </button>
-                  <button
-                    type="button"
-                    className={`link link--danger ${confirmingPermanent ? 'is-confirming' : ''}`}
-                    onClick={() => {
-                      if (confirmingPermanent) void remove(true);
-                      else setConfirmingPermanent(true);
-                    }}
-                    onBlur={() => setConfirmingPermanent(false)}
-                  >
-                    {confirmingPermanent ? 'Confirm — this cannot be undone' : 'Delete permanently'}
-                  </button>
-                </div>
-              </div>
+            </>
+          )}
+          <div className="player__bar">
+            <span className="player__name">{current.fileName}</span>
+            <div className="player__actions">
+              {playing === current.filePath ? (
+                <button type="button" className="link" onClick={() => setPlaying(null)}>
+                  Close player
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="link"
+                  onClick={() => setPlaying(current.filePath)}
+                >
+                  Play
+                </button>
+              )}
+              {/* Moving is a menu as well as a drag: a drag needs the folder on
+                  screen, and the one you want is often not the one you are in. */}
+              <label className="moveTo">
+                Move to
+                <select
+                  className="moveTo__select"
+                  value=""
+                  onChange={(e) => {
+                    const target = e.target.value;
+                    if (target === '') return;
+                    void moveTo(current.filePath, target === '/' ? '' : target);
+                  }}
+                >
+                  <option value="">Choose a folder…</option>
+                  {place !== '' && <option value="/">{rootName}</option>}
+                  {folders
+                    .filter((f) => f.path !== place)
+                    .map((f) => (
+                      <option key={f.path} value={f.path}>
+                        {f.path}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                className="link"
+                onClick={() =>
+                  void runAction(() => window.api.openRecordingExternally(current.filePath))
+                }
+              >
+                Open in player
+              </button>
+              <button
+                type="button"
+                className="link"
+                onClick={() => void runAction(() => window.api.revealRecording(current.filePath))}
+              >
+                Show in folder
+              </button>
+              <button type="button" className="link" onClick={() => void remove(false)}>
+                Move to Recycle Bin
+              </button>
+              <button
+                type="button"
+                className={`link link--danger ${confirmingPermanent ? 'is-confirming' : ''}`}
+                onClick={() => {
+                  if (confirmingPermanent) void remove(true);
+                  else setConfirmingPermanent(true);
+                }}
+                onBlur={() => setConfirmingPermanent(false)}
+              >
+                {confirmingPermanent ? 'Confirm — this cannot be undone' : 'Delete permanently'}
+              </button>
             </div>
-          )}
+          </div>
+        </div>
+      )}
 
-          {listing.folders.length > 0 && (
-            <ul className="folders">
-              {listing.folders.map((folder) => (
-                <li key={folder.path}>
-                  <button type="button" className="folder" onClick={() => go(folder.path)}>
-                    <span className="folder__icon" aria-hidden="true">
-                      <FolderIcon />
-                    </span>
-                    <span className="folder__name">{folder.name}</span>
-                    <span className="folder__meta">
-                      {folder.itemCount} {folder.itemCount === 1 ? 'recording' : 'recordings'}
-                      {folder.itemCount > 0 && (
-                        <>
-                          <span className="tile__sep" aria-hidden="true" />
-                          {formatSize(folder.sizeBytes)}
-                        </>
-                      )}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
+      {listing.folders.length > 0 && (
+        <ul className="folders">
+          {listing.folders.map((folder) => (
+            <li
+              key={folder.path}
+              className={`folderCell ${dropTarget === folder.path ? 'is-dropTarget' : ''}`}
+              {...dropProps(folder.path)}
+            >
+              <button type="button" className="folder" onClick={() => go(folder.path)}>
+                <span className="folder__icon" aria-hidden="true">
+                  <FolderIcon />
+                </span>
+                <span className="folder__name">{folder.name}</span>
+                <span className="folder__meta">
+                  {folder.itemCount} {folder.itemCount === 1 ? 'recording' : 'recordings'}
+                  {folder.itemCount > 0 && (
+                    <>
+                      <span className="tile__sep" aria-hidden="true" />
+                      {formatSize(folder.sizeBytes)}
+                    </>
+                  )}
+                </span>
+              </button>
+              <button
+                type="button"
+                className={`folder__delete ${confirmingFolder === folder.path ? 'is-confirming' : ''}`}
+                onClick={() => {
+                  if (confirmingFolder === folder.path) {
+                    setConfirmingFolder(null);
+                    void runAction(() => window.api.deleteFolder(folder.path));
+                  } else {
+                    setConfirmingFolder(folder.path);
+                  }
+                }}
+                onBlur={() => setConfirmingFolder((f) => (f === folder.path ? null : f))}
+                title={
+                  confirmingFolder === folder.path
+                    ? `Confirm: move "${folder.name}" and everything in it to the Recycle Bin`
+                    : `Delete "${folder.name}"`
+                }
+                aria-label={
+                  confirmingFolder === folder.path
+                    ? `Confirm deleting ${folder.name}`
+                    : `Delete ${folder.name}`
+                }
+              >
+                {confirmingFolder === folder.path ? 'Confirm' : <TrashIcon />}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
 
-          {listing.files.length === 0 && listing.folders.length === 0 ? (
-            <p className="library__empty">
-              This folder is empty. Recordings you move here will show up in it.
-            </p>
-          ) : (
-            <ul className="tiles">
-              {listing.files.map((item) => {
-                const dur = durations[item.filePath];
-                return (
-                  <li key={item.filePath} ref={(el) => observe(item.filePath, el)}>
-                    <button
-                      type="button"
-                      className={`tile ${selected === item.filePath ? 'is-selected' : ''}`}
-                      onClick={() => {
-                        setSelected(item.filePath);
-                        setConfirmingPermanent(false);
-                      }}
-                      aria-pressed={selected === item.filePath}
-                    >
-                      {/* The placeholder keeps its size when no image exists, so
-                          tiles never reflow as thumbnails arrive. */}
-                      {thumbs[item.filePath] ? (
-                        <img className="tile__thumb" src={thumbs[item.filePath]} alt="" />
-                      ) : (
-                        <span className="tile__thumb" aria-hidden="true" />
-                      )}
-                      <span className="tile__name">{item.fileName}</span>
-                      <span className="tile__meta">
-                        {formatWhen(item.modifiedAt)}
+      {listing.files.length === 0 && listing.folders.length === 0 ? (
+        <p className="library__empty">
+          {place === ''
+            ? 'Nothing recorded yet. Press the red button on the bar, and your recordings will show up here.'
+            : 'This folder is empty. Recordings you drag or move here will show up in it.'}
+        </p>
+      ) : (
+        <ul className="tiles">
+          {listing.files.map((item) => {
+            const dur = durations[item.filePath];
+            return (
+              <li key={item.filePath} ref={(el) => observe(item.filePath, el)}>
+                <button
+                  type="button"
+                  className={`tile ${selected === item.filePath ? 'is-selected' : ''}`}
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData(DRAG_TYPE, item.filePath);
+                    e.dataTransfer.effectAllowed = 'move';
+                    setSelected(item.filePath);
+                  }}
+                  onDragEnd={() => setDropTarget(null)}
+                  onClick={() => {
+                    setSelected(item.filePath);
+                    setConfirmingPermanent(false);
+                  }}
+                  onDoubleClick={() => {
+                    setSelected(item.filePath);
+                    setPlaying(item.filePath);
+                  }}
+                  aria-pressed={selected === item.filePath}
+                  title="Click to select, double-click to play"
+                >
+                  {/* The placeholder keeps its size when no image exists, so
+                      tiles never reflow as thumbnails arrive. */}
+                  {thumbs[item.filePath] ? (
+                    <img className="tile__thumb" src={thumbs[item.filePath]} alt="" />
+                  ) : (
+                    <span className="tile__thumb" aria-hidden="true" />
+                  )}
+                  <span className="tile__name">{item.fileName}</span>
+                  <span className="tile__meta">
+                    {formatWhen(item.modifiedAt)}
+                    <span className="tile__sep" aria-hidden="true" />
+                    {formatSize(item.sizeBytes)}
+                    {dur !== undefined && formatDuration(dur) && (
+                      <>
                         <span className="tile__sep" aria-hidden="true" />
-                        {formatSize(item.sizeBytes)}
-                        {dur !== undefined && formatDuration(dur) && (
-                          <>
-                            <span className="tile__sep" aria-hidden="true" />
-                            {formatDuration(dur)}
-                          </>
-                        )}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </>
+                        {formatDuration(dur)}
+                      </>
+                    )}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
       )}
     </section>
   );

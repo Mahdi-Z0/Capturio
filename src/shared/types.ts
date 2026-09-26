@@ -350,6 +350,8 @@ export interface RecorderApi {
   createFolder(parent: string, name: string): Promise<string>;
   /** Move a recording into a folder. Returns its new absolute path. */
   moveRecording(filePath: string, targetDir: string): Promise<string>;
+  /** Send a folder and everything in it to the Recycle Bin. Never the root. */
+  deleteFolder(relativeDir: string): Promise<void>;
   /** Show a folder in Explorer, so the parts this app does not do are one click away. */
   revealFolder(relativeDir: string): Promise<void>;
 

@@ -1219,6 +1219,37 @@ function registerIpc(): void {
     },
   );
 
+  /**
+   * Delete a folder, with whatever is inside it, to the Recycle Bin.
+   *
+   * Recoverable only. A folder holds recordings that cannot be remade, so this
+   * never falls back to a real delete when the Recycle Bin refuses -- the same
+   * rule, for the same reason, as deleting a single recording.
+   */
+  ipcMain.handle('recordings:delete-folder', async (_e, relativeDir: unknown): Promise<void> => {
+    const dir = resolveRelative('recordings:delete-folder', relativeDir ?? '');
+    if (dir === resolve(getRecordingsDir())) {
+      fail('recordings:delete-folder', new Error('The recordings folder itself cannot be deleted'));
+    }
+    // A recording is written at the top level, but it can be moved, and this
+    // handler is callable whatever the UI happens to offer.
+    for (const rec of active.values()) {
+      const inside = (p: string): boolean => resolve(p).startsWith(dir + sep);
+      if (inside(rec.finalPath) || inside(rec.partPath)) {
+        fail('recordings:delete-folder', new Error('A recording in that folder is still being written'));
+      }
+    }
+    try {
+      await shell.trashItem(dir);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      fail(
+        'recordings:delete-folder',
+        new Error(`Could not move that folder to the Recycle Bin (${detail}). It was left in place.`),
+      );
+    }
+  });
+
   ipcMain.handle('recordings:reveal-folder', (_e, relativeDir: unknown): void => {
     const dir = resolveRelative('recordings:reveal-folder', relativeDir ?? '');
     // openPath rather than showItemInFolder: this opens the folder itself,

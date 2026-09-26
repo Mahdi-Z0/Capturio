@@ -66,6 +66,8 @@ const api = {
     ipcRenderer.invoke('recordings:create-folder', parent, name),
   moveRecording: (filePath: string, targetDir: string): Promise<string> =>
     ipcRenderer.invoke('recordings:move', filePath, targetDir),
+  deleteFolder: (relativeDir: string): Promise<void> =>
+    ipcRenderer.invoke('recordings:delete-folder', relativeDir),
   revealFolder: (relativeDir: string): Promise<void> =>
     ipcRenderer.invoke('recordings:reveal-folder', relativeDir),
 

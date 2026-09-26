@@ -321,9 +321,25 @@ only *after* decoding was hiding one, and it is refused rather than kept. The `.
 unreachable through the protocol — a standard scheme normalises it away first — so the verifier
 exercises it directly against the validator rather than pretending the URL path reaches it.
 
-**The recordings window is a browser now**: back, forward, up, and a breadcrumb. The top level is a
-single card for the recordings folder rather than a file list, so there is nowhere above it to go —
-`Place` is `null` at the top, and `parentOf(null)` is `null`.
+**The recordings window is a browser now**: back, forward, up, and a breadcrumb. It opens *in* the
+recordings folder and cannot go above it — `parentOf('')` is `null`, which disables Up. It does not
+show the Videos folder: that level holds exactly one folder and nothing can be saved into it, so it
+was a level that only ever contained one card.
+
+**One click selects, two clicks play.** Selecting used to open the player with `autoPlay`, so every
+glance at the list started a video. Selection shows what can be done with the recording — play, move
+to a folder, reveal, Recycle Bin, delete permanently — and only a double-click mounts the `<video>`.
+
+**Recordings can be dragged onto folders, and onto the breadcrumb.** Every drop target is a folder
+path, so dragging onto a crumb moves a recording back out of a subfolder. The drag carries a private
+type (`application/x-capturio-recording`), and `onDragOver` checks for it before calling
+`preventDefault`, so a file dragged in from the desktop does not light the folders up. The cell holds
+the drop handlers rather than the card, because the delete button sits in the cell too.
+
+**Deleting a folder goes to the Recycle Bin, never further.** It takes two clicks (the second says
+"Confirm"), refuses the recordings folder itself, refuses a folder holding a recording still being
+written, and — like deleting a single recording — never falls back to a real delete when the Recycle
+Bin refuses.
 
 ## Saying where the recording went
 
