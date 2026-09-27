@@ -1598,7 +1598,6 @@ function resourcePath(file: string): string {
 function toggleBar(): void {
   if (!barWindow || barWindow.isDestroyed()) {
     createBar();
-  createTray();
   } else if (barWindow.isVisible()) {
     barWindow.hide();
   } else {
@@ -1885,11 +1884,24 @@ function hideLibrary(): void {
   libraryWindow.hide();
 }
 
+// One recorder at a time. A second launch -- from the Start menu, say, while the
+// bar is hidden -- is someone looking for the bar, so the running app brings it
+// back and the new process leaves before it has touched anything.
+const primaryInstance = app.requestSingleInstanceLock();
+if (!primaryInstance) app.quit();
+
+app.on('second-instance', () => {
+  console.log('[app] launched again; bringing the bar back');
+  createBar();
+  trayRefresh?.();
+});
+
 // Before anything else: from here on, whatever the app reports also lands on
 // disk. Errors during startup are exactly the ones with no console present.
-log.start(join(app.getPath('userData'), 'logs'));
+if (primaryInstance) log.start(join(app.getPath('userData'), 'logs'));
 
 app.whenReady().then(() => {
+  if (!primaryInstance) return;
   migrateSettingsFromOldName();
   registerDisplayMediaHandler();
   registerRecordingProtocol();
@@ -1899,6 +1911,9 @@ app.whenReady().then(() => {
   void recoverOrphanedParts();
   void pruneThumbs();
   createBar();
+  // From launch, not on first use: hiding the bar is only safe because the tray
+  // can bring it back.
+  createTray();
 
   // Start and stop without reaching for the bar, which is the point of a hotkey
   // on a recorder: the moment worth capturing rarely waits.
