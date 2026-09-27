@@ -97,7 +97,7 @@ handler, then the preload method. Keep them in sync.
 From `CLAUDE.md` § Safety and the user's standing instructions:
 
 - **Ask before `git push`**, before publishing, and before anything that writes outside this folder.
-  There are unpushed commits; see `.paul/STATE.md`.
+  `git log --oneline origin/main..HEAD` shows what is unpushed.
 - **Recordings are personal data.** Never log file contents or full paths to a remote service, and
   never add telemetry without asking.
 - **Never commit anything from `recordings/`** (gitignored — keep it that way).

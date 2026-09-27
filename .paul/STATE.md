@@ -144,10 +144,9 @@ with `npm run dist`.
 
 **Repository:** `https://github.com/Mahdi-Z0/Capturio.git`, branch `main`.
 
-**Unpushed:** everything after `058906d`, which is the last commit on `origin/main`. Ask git rather
-than trusting this line: `git log --oneline origin/main..HEAD` — it was **10 commits** when this was
-written. The user has not authorised a push. **Ask before pushing** (a project rule in `CLAUDE.md`,
-and it has been broken once — `058906d` itself was pushed unprompted).
+**Pushed:** everything through Phase 8 was pushed on 2026-09-27, at the user's request. Ask git what
+is unpushed now rather than trusting this line: `git log --oneline origin/main..HEAD`. **Ask before
+every push** — one authorisation does not cover the next (a project rule in `CLAUDE.md`).
 
 **The user's recordings folder is `C:\Users\master\Videos\ScreenRecorder`** (the pre-rename name, kept
 deliberately). It holds their own recordings, including a folder they made called `Mine`. Never delete
