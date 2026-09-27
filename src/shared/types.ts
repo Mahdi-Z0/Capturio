@@ -125,6 +125,25 @@ export interface RevealRequest {
   play: boolean;
 }
 
+/** Where new recordings are saved. */
+export interface RecordingsFolder {
+  path: string;
+  isDefault: boolean;
+  /**
+   * Set when a chosen folder could not be used at startup -- a drive that is not
+   * connected, say -- and recordings are going to the default folder instead.
+   */
+  unavailable: string | null;
+}
+
+export interface RecordingsFolderUpdate {
+  folder: RecordingsFolder;
+  /** Why the change was refused, in the user's terms. Null when it applied or was cancelled. */
+  problem: string | null;
+  /** True when the folder is now different from before. */
+  changed: boolean;
+}
+
 /** One folder's contents: what the recordings window shows at a given level. */
 export interface FolderListing {
   /** Relative to the recordings folder; `''` is the folder itself. */
@@ -314,15 +333,100 @@ export const IDLE_HUD_STATE: HudState = {
 };
 
 /**
- * Commands the bar can receive from main -- today only the global hotkey.
- * 'toggle' means start or stop, whichever applies.
+ * Commands the bar can receive from main: the global shortcuts and the tray.
+ * 'toggle' means start or stop, whichever applies; 'record-region' opens the
+ * region selector and starts recording the moment a region is chosen.
  */
-export type HudCommand = 'toggle' | 'stop' | 'pause' | 'resume' | 'toggle-mute';
+export type HudCommand = 'toggle' | 'record-region' | 'stop' | 'pause' | 'resume' | 'toggle-mute';
 
 export function isHudCommand(v: unknown): v is HudCommand {
   return (
-    v === 'toggle' || v === 'stop' || v === 'pause' || v === 'resume' || v === 'toggle-mute'
+    v === 'toggle' ||
+    v === 'record-region' ||
+    v === 'stop' ||
+    v === 'pause' ||
+    v === 'resume' ||
+    v === 'toggle-mute'
   );
+}
+
+/**
+ * What a global shortcut can do, from anywhere, without finding the bar first.
+ */
+export type ShortcutAction = 'record' | 'region';
+
+export const SHORTCUT_ORDER: ShortcutAction[] = ['region', 'record'];
+
+export const SHORTCUT_LABELS: Record<ShortcutAction, string> = {
+  record: 'Start or stop recording',
+  region: 'Record a region',
+};
+
+/** A shortcut keeps its keys while switched off, so turning it back on is one click. */
+export interface ShortcutSetting {
+  /** Canonical accelerator, at most three keys: `Super+Shift+Q`. */
+  keys: string;
+  enabled: boolean;
+}
+
+/**
+ * Both on Win: apps and browsers almost never bind it, so a global shortcut there
+ * takes nothing away from them (Ctrl+Shift+R, the old start/stop, is a browser's
+ * hard reload). Win+Shift+R is Windows' own screen recording, hence Z -- the same
+ * left-hand column as Q. Start/stop is off by default; recording a region is the
+ * one worth having from the first run.
+ */
+export const DEFAULT_SHORTCUTS: Record<ShortcutAction, ShortcutSetting> = {
+  record: { keys: 'Super+Shift+Z', enabled: false },
+  region: { keys: 'Super+Shift+Q', enabled: true },
+};
+
+export function isShortcutAction(v: unknown): v is ShortcutAction {
+  return v === 'record' || v === 'region';
+}
+
+/**
+ * Whether a shortcut actually works right now -- not what was asked for.
+ * `taken` means Windows or another program held the combination when this app
+ * tried to register it, so pressing it does nothing here.
+ */
+export type ShortcutState = 'on' | 'off' | 'taken';
+
+export interface ShortcutStatus {
+  action: ShortcutAction;
+  /** Canonical Electron accelerator, e.g. `Super+Shift+Q`. Kept while switched off. */
+  accelerator: string;
+  enabled: boolean;
+  /** `off` when switched off; otherwise whether it actually registered. */
+  state: ShortcutState;
+}
+
+/** A change to one shortcut: new keys, switched on or off, or both. */
+export interface ShortcutChange {
+  keys?: string;
+  enabled?: boolean;
+}
+
+export interface ShortcutUpdate {
+  shortcuts: ShortcutStatus[];
+  /** Why a change was refused, in the user's terms. Null when it was applied. */
+  problem: string | null;
+}
+
+/** An accelerator as the keys someone presses: `Control+Super+K` -> Ctrl, Win, K. */
+export function acceleratorKeys(accelerator: string): string[] {
+  const names: Record<string, string> = {
+    Control: 'Ctrl',
+    Super: 'Win',
+    PrintScreen: 'Print Screen',
+    PageUp: 'Page Up',
+    PageDown: 'Page Down',
+    Up: '↑',
+    Down: '↓',
+    Left: '←',
+    Right: '→',
+  };
+  return accelerator.split('+').map((part) => names[part] ?? part);
 }
 
 /**
@@ -413,6 +517,19 @@ export interface RecorderApi {
   /** Free bytes where recordings are saved, or null if unknown. */
   getFreeSpace(): Promise<number | null>;
 
+  /** Each global shortcut and whether it is really working. */
+  getShortcuts(): Promise<ShortcutStatus[]>;
+  /**
+   * Change one, or turn it off with null. A combination Windows or another
+   * program holds is refused and the old one kept; `problem` says so.
+   */
+  setShortcut(action: ShortcutAction, change: ShortcutChange): Promise<ShortcutUpdate>;
+  /**
+   * Suspend every global shortcut while a new combination is being pressed, or
+   * pressing the current one would fire it instead of reaching the page.
+   */
+  suspendShortcuts(suspended: boolean): void;
+
   /** Report a renderer failure into the app log. */
   reportProblem(level: 'error' | 'warn', message: string): void;
   /** Open the log file in whatever the system uses for text. */
@@ -420,6 +537,12 @@ export interface RecorderApi {
 
   /** Bring the control bar back and focus it. */
   showBar(): Promise<void>;
+  /** Recordings window: bring the bar forward and walk through its buttons. */
+  startTour(): Promise<void>;
+  /** Bar: a tour was asked for while it was listening. Returns an unsubscribe. */
+  onTour(handler: () => void): () => void;
+  /** Bar, on mount: whether a tour was asked for before it could listen. */
+  takePendingTour(): Promise<boolean>;
   /** Hide the bar. It comes back from the tray icon. */
   hideBar(): Promise<void>;
   /** Quit outright. Offered from the tray, not the bar. */
@@ -427,6 +550,12 @@ export interface RecorderApi {
 
   revealRecording(filePath: string): Promise<void>;
   getRecordingsDir(): Promise<string>;
+  /** Where recordings go, whether that is the default, and anything wrong with it. */
+  getRecordingsFolder(): Promise<RecordingsFolder>;
+  /** Ask for a new folder. Recordings already made stay where they are. */
+  chooseRecordingsFolder(): Promise<RecordingsFolderUpdate>;
+  /** Go back to the default folder under Videos. */
+  useDefaultRecordingsFolder(): Promise<RecordingsFolderUpdate>;
 
   /** Recorder -> overlay. Sent by the main window only. */
   publishHudState(state: HudState): void;

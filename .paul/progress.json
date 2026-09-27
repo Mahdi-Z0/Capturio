@@ -197,23 +197,34 @@
       "weight": 2,
       "status": "done",
       "shipped": "05-02",
-      "note": "Ctrl+Shift+R, plus the tray icon. Reports it when Windows has the combination already"
+      "note": "Win+Shift+Z (was Ctrl+Shift+R until 08-04), off by default; the tray icon always works"
     },
     {
       "id": "shortcuts-configurable",
       "name": "Configurable global shortcuts",
       "group": "Settings",
       "weight": 3,
-      "status": "todo",
-      "note": "Phase 8: show the bar, and record a region immediately. Must report a registration that fails"
+      "status": "done",
+      "note": "Record a region (Win+Shift+Q, on) and start/stop (Win+Shift+Z, off). Keys plus a switch, three keys max; a taken one is reported",
+      "shipped": "08-01"
+    },
+    {
+      "id": "recordings-folder",
+      "name": "Choose where recordings are saved",
+      "group": "Settings",
+      "weight": 2,
+      "status": "done",
+      "shipped": "08-03",
+      "note": "Never moves existing recordings; a missing chosen folder falls back to the default and says so"
     },
     {
       "id": "tour",
       "name": "A short guided tour of the bar",
       "group": "Settings",
       "weight": 2,
-      "status": "todo",
-      "note": "Phase 8, and optional: launched from Settings/Help, never on first run. Help already covers it in prose"
+      "status": "done",
+      "note": "Six steps on the live bar: once on a fresh install's first launch, and from Help",
+      "shipped": "08-02"
     },
     {
       "id": "store-package",

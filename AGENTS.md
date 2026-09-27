@@ -71,7 +71,9 @@ rather than a copy of its logic:
 
 - `verify:guards` — every path rule (23 refusals, 6 allowances, 11 folder names)
 - `verify:range` — byte-range parsing and the CORS headers playback and thumbnails depend on
-- `verify:finalize` — the WebM finalizer, asserting the media bytes are identical before and after
+- `verify:shortcuts` — the global shortcut validator (10 accepted, 17 refused by the right rule)
+- `verify:finalize` — the WebM finalizer, asserting the media bytes are identical before and after.
+  It needs an unfinalized recording in the top of the recordings folder and exits 2 without one
 
 ## Architecture in one screen
 
@@ -133,6 +135,6 @@ Each is documented with its measurement in `CLAUDE.md`; this is only a pointer s
 ## What is next
 
 See `.paul/STATE.md` § Session Continuity for the authoritative answer. As of 2026-09-27:
-**Phase 8 — configurable global shortcuts**, then a decision on whether the short guided tour is
-still worth building now that the Help view exists. After that, MSIX packaging for the Microsoft
-Store, which is waiting on the user's Partner Center publisher identity.
+Phase 8 and v0.7 are complete: global shortcuts, a choosable recordings folder, and a tour that runs
+once on first launch. Next is MSIX packaging for the Microsoft Store, which is
+waiting on the user's Partner Center publisher identity.

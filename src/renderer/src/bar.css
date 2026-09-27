@@ -83,7 +83,9 @@
   background: transparent;
   color: #9aa0b5;
   cursor: pointer;
-  transition: background-color 110ms ease, color 110ms ease;
+  transition:
+    background-color 110ms ease,
+    color 110ms ease;
 }
 
 .icon:hover:not(:disabled) {
@@ -251,6 +253,115 @@
 
 .panel .windows__grid {
   max-height: 260px;
+}
+
+/* The tour. The card hangs off the bar like the saved card; the bar's own
+   buttons carry a ring, so what is being explained is the real control. */
+.barShell[data-touring='source'] [data-tour='source'],
+.barShell[data-touring='sound'] [data-tour='sound'],
+.barShell[data-touring='record'] [data-tour='record'],
+.barShell[data-touring='windows'] [data-tour='windows'],
+.barShell[data-touring='hide'] [data-tour='hide'] {
+  border-radius: 10px;
+  box-shadow: 0 0 0 2px #6f8cff;
+  animation: tour-glow 1.6s ease-in-out infinite;
+}
+
+/* The whole bar keeps its drop shadow under the ring; it genuinely floats. */
+.barShell[data-touring='bar'] [data-tour='bar'] {
+  border-color: #6f8cff;
+  box-shadow:
+    0 0 0 2px #6f8cff,
+    0 8px 28px rgba(0, 0, 0, 0.45);
+}
+
+@keyframes tour-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 2px #6f8cff;
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(111, 140, 255, 0.45);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .barShell[data-touring] [data-tour] {
+    animation: none;
+  }
+}
+
+.tour {
+  -webkit-app-region: no-drag;
+  position: relative;
+  padding: 10px 12px 12px 14px;
+  border-radius: 14px;
+  background: rgba(20, 21, 28, 0.97);
+  border: 1px solid #4a5170;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  color: var(--ink, #f2f3f7);
+}
+
+/* Points up at the highlighted control; its x is measured, not guessed. */
+.tour::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: var(--caret-x, 50%);
+  width: 10px;
+  height: 10px;
+  transform: translateX(-50%) rotate(45deg);
+  background: rgb(20, 21, 28);
+  border-left: 1px solid #4a5170;
+  border-top: 1px solid #4a5170;
+}
+
+.tour__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tour__count {
+  font-size: 11.5px;
+  color: #9aa0b5;
+  letter-spacing: 0.02em;
+}
+
+.tour__close {
+  width: 28px;
+  height: 28px;
+  margin: -4px -4px 0 0;
+}
+
+.tour__title {
+  margin: 2px 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.tour__body {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #c3c8d8;
+}
+
+.tour__body .kbd {
+  font-size: 11px;
+}
+
+.tour__nav {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.tour__next {
+  border-color: #56609a;
+  background: #2e3446;
 }
 
 /* The card that says where the recording went.

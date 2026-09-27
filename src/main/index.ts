@@ -2,6 +2,7 @@ import {
   app,
   BrowserWindow,
   desktopCapturer,
+  dialog,
   globalShortcut,
   ipcMain,
   Menu,
@@ -12,7 +13,16 @@ import {
   shell,
   Tray,
 } from 'electron';
-import { copyFileSync, createWriteStream, existsSync, mkdirSync, type WriteStream } from 'node:fs';
+import {
+  accessSync,
+  constants as fsConstants,
+  copyFileSync,
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  statSync,
+  type WriteStream,
+} from 'node:fs';
 import {
   stat,
   statfs,
@@ -23,7 +33,17 @@ import {
   readFile,
   writeFile,
 } from 'node:fs/promises';
-import { basename, dirname, join, relative, resolve, sep, extname } from 'node:path';
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  parse as parsePath,
+  relative,
+  resolve,
+  sep,
+  extname,
+} from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   resolveRecordingRequest,
@@ -34,6 +54,7 @@ import {
 import { createRangeResponse } from './byteRange.cjs';
 import { finalizeWebm } from './webmFinalize.cjs';
 import * as log from './log.cjs';
+import { normalizeAccelerator } from './accelerator.cjs';
 import type {
   AudioMode,
   CaptureTarget,
@@ -48,6 +69,13 @@ import type {
   FolderListing,
   RevealRequest,
   LibraryTab,
+  ShortcutAction,
+  ShortcutState,
+  ShortcutSetting,
+  ShortcutStatus,
+  ShortcutUpdate,
+  RecordingsFolder,
+  RecordingsFolderUpdate,
 } from '../shared/types.js';
 import {
   DEFAULT_AUDIO_MODE,
@@ -55,7 +83,16 @@ import {
   isAudioMode,
   isQualityPreset,
   PLAYABLE_EXTENSIONS,
-  RECORDING_SCHEME, DEFAULT_MIC_DEVICE, SCREEN_TARGET, isWindowSourceId, isRegionRect,
+  RECORDING_SCHEME,
+  DEFAULT_MIC_DEVICE,
+  SCREEN_TARGET,
+  isWindowSourceId,
+  isRegionRect,
+  DEFAULT_SHORTCUTS,
+  SHORTCUT_LABELS,
+  SHORTCUT_ORDER,
+  acceleratorKeys,
+  isShortcutAction,
 } from '../shared/types.js';
 
 /**
@@ -90,18 +127,95 @@ protocol.registerSchemesAsPrivileged([
 // the moment this ships to the Store.
 
 let recordingsDir: string | null = null;
+/** The folder chosen in Settings, or null for the default. Set from settings at startup. */
+let chosenRecordingsDir: string | null = null;
+/**
+ * A chosen folder that could not be used at startup -- a drive not connected,
+ * say. Recordings go to the default meanwhile, and Settings says so. The choice
+ * itself is kept, so the folder is used again once it is back.
+ */
+let unavailableRecordingsDir: string | null = null;
+
+function defaultRecordingsDir(): string {
+  const preferred = join(app.getPath('videos'), 'Capturio');
+  // Renaming the app must not orphan recordings already made: if the new
+  // folder does not exist yet but the old one does, keep using the old one.
+  // Rename it in Explorer and this picks the new one up on the next launch.
+  const legacy = join(app.getPath('videos'), 'ScreenRecorder');
+  return !existsSync(preferred) && existsSync(legacy) ? legacy : preferred;
+}
 
 function getRecordingsDir(): string {
   if (!recordingsDir) {
-    const preferred = join(app.getPath('videos'), 'Capturio');
-    // Renaming the app must not orphan recordings already made: if the new
-    // folder does not exist yet but the old one does, keep using the old one.
-    // Rename it in Explorer and this picks the new one up on the next launch.
-    const legacy = join(app.getPath('videos'), 'ScreenRecorder');
-    recordingsDir = !existsSync(preferred) && existsSync(legacy) ? legacy : preferred;
+    recordingsDir = chosenRecordingsDir ?? defaultRecordingsDir();
     mkdirSync(recordingsDir, { recursive: true });
   }
   return recordingsDir;
+}
+
+/**
+ * Apply the stored folder choice. Must run before anything reads the folder:
+ * crash recovery, the protocol and the first free-space check all do.
+ *
+ * A chosen folder that is missing is *not* recreated: on a drive that is not
+ * connected that would fail, and on a drive that is, it may be the wrong one.
+ */
+function configureRecordingsDir(stored: string | null): void {
+  recordingsDir = null;
+  chosenRecordingsDir = null;
+  unavailableRecordingsDir = null;
+  if (stored === null) return;
+  try {
+    if (!statSync(stored).isDirectory()) throw new Error('not a folder');
+    accessSync(stored, fsConstants.W_OK);
+    chosenRecordingsDir = stored;
+  } catch {
+    unavailableRecordingsDir = stored;
+    console.error('[recordings] the chosen folder is not available; saving to the default for now');
+  }
+}
+
+function recordingsFolderState(): RecordingsFolder {
+  return {
+    path: getRecordingsDir(),
+    isDefault: chosenRecordingsDir === null,
+    unavailable: unavailableRecordingsDir,
+  };
+}
+
+/** Why a folder cannot hold recordings, in the user's terms, or null when it can. */
+async function folderProblem(folder: string): Promise<string | null> {
+  if (!isAbsolute(folder)) return 'Choose a folder on this computer.';
+  if (parsePath(folder).root === folder) return 'Choose a folder rather than a whole drive.';
+  const own = resolve(app.getPath('userData'));
+  if (folder === own || folder.startsWith(own + sep)) {
+    return 'That folder holds Capturio’s own settings. Choose another.';
+  }
+  // Proven by writing, not by asking: permissions on Windows are too layered for
+  // a mode check to be the truth.
+  const probe = join(folder, `.capturio-${randomUUID()}.tmp`);
+  try {
+    await writeFile(probe, '');
+    await unlink(probe);
+  } catch {
+    return 'Capturio cannot save files in that folder. Choose another.';
+  }
+  return null;
+}
+
+/**
+ * Point new recordings somewhere else. Recordings already made are left where
+ * they are: moving someone's files is not what "change folder" asks for.
+ */
+async function setRecordingsFolder(folder: string | null): Promise<RecordingsFolderUpdate> {
+  const before = getRecordingsDir();
+  const stored = folder !== null && folder === resolve(defaultRecordingsDir()) ? null : folder;
+  const current = await readSettings();
+  await writeSettings({ ...current, version: SETTINGS_VERSION, recordingsDir: stored });
+  configureRecordingsDir(stored);
+  const after = getRecordingsDir();
+  if (after !== before) console.log('[recordings] folder changed');
+  return { folder: recordingsFolderState(), problem: null, changed: after !== before };
 }
 
 /** Local time, filesystem-safe, sorts chronologically: 2026-09-16_14-05-33 */
@@ -308,7 +422,15 @@ async function recoverOrphanedParts(): Promise<number> {
 // handling that would either throw on read or silently reset the user's choice.
 /** Below this, a recording is not worth starting. */
 const MIN_FREE_BYTES = 300 * 1024 * 1024;
-const SETTINGS_VERSION = 3;
+// v4 added `shortcuts`; v5 gives each one keys plus an on/off switch and adds
+// `recordingsDir`; v6 adds `tourSeen` and moves start/stop off Ctrl+Shift+R.
+// Older files gain the defaults.
+const SETTINGS_VERSION = 6;
+
+/** Start/stop's keys before v6: a browser's hard reload, so no longer the default. */
+const OLD_RECORD_KEYS = 'Control+Shift+R';
+
+type Shortcuts = Record<ShortcutAction, ShortcutSetting>;
 
 interface SettingsFile {
   version: number;
@@ -316,6 +438,11 @@ interface SettingsFile {
   audio: AudioMode;
   /** deviceId of the chosen microphone; '' means the Windows default. */
   micDevice: string;
+  shortcuts: Shortcuts;
+  /** Where new recordings go; null means the default folder under Videos. */
+  recordingsDir: string | null;
+  /** Whether the first-run tour of the bar has been shown. */
+  tourSeen: boolean;
 }
 
 /** A deviceId is an opaque token; bound its length rather than trusting it. */
@@ -381,14 +508,20 @@ async function readSettings(): Promise<SettingsFile> {
     quality: DEFAULT_QUALITY,
     audio: DEFAULT_AUDIO_MODE,
     micDevice: DEFAULT_MIC_DEVICE,
+    shortcuts: defaultShortcuts(),
+    recordingsDir: null,
+    // Only a missing file is a first run. A corrupt one belongs to someone who has
+    // used the app, and should not greet them with a tour.
+    tourSeen: true,
   };
 
   let raw: string;
   try {
     raw = await readFile(settingsPath(), 'utf8');
   } catch {
-    void writeSettings(fallback).catch(() => undefined);
-    return fallback;
+    const firstRun: SettingsFile = { ...fallback, tourSeen: false };
+    void writeSettings(firstRun).catch(() => undefined);
+    return firstRun;
   }
 
   let parsed: unknown;
@@ -405,6 +538,9 @@ async function readSettings(): Promise<SettingsFile> {
     quality?: unknown;
     audio?: unknown;
     micDevice?: unknown;
+    shortcuts?: unknown;
+    recordingsDir?: unknown;
+    tourSeen?: unknown;
   };
 
   // Each field is validated independently, so one bad value never discards the
@@ -412,6 +548,11 @@ async function readSettings(): Promise<SettingsFile> {
   const quality = isQualityPreset(obj.quality) ? obj.quality : DEFAULT_QUALITY;
   const audio = isAudioMode(obj.audio) ? obj.audio : DEFAULT_AUDIO_MODE;
   const micDevice = isMicDevice(obj.micDevice) ? obj.micDevice : DEFAULT_MIC_DEVICE;
+  const { shortcuts, healed: shortcutsHealed } = readShortcuts(obj.shortcuts, obj.version);
+  const recordingsDir = isStoredFolder(obj.recordingsDir) ? obj.recordingsDir : null;
+  const folderHealed = obj.recordingsDir !== undefined && obj.recordingsDir !== recordingsDir;
+  // Absent means an install from before the tour existed: not a first run.
+  const tourSeen = typeof obj.tourSeen === 'boolean' ? obj.tourSeen : true;
 
   if (!isQualityPreset(obj.quality)) {
     console.error(`[settings] unknown quality ${String(obj.quality)}; using ${DEFAULT_QUALITY}`);
@@ -421,19 +562,91 @@ async function readSettings(): Promise<SettingsFile> {
     console.log(`[settings] migrating v${String(obj.version)} -> v${SETTINGS_VERSION}`);
   }
 
-  const settings: SettingsFile = { version: SETTINGS_VERSION, quality, audio, micDevice };
+  const settings: SettingsFile = {
+    version: SETTINGS_VERSION,
+    quality,
+    audio,
+    micDevice,
+    shortcuts,
+    recordingsDir,
+    tourSeen,
+  };
   // Rewrite on migration or on any rejected field, so a stale or broken file
   // heals once rather than being re-read and re-patched on every launch.
   if (
     migrating ||
     !isQualityPreset(obj.quality) ||
     !isAudioMode(obj.audio) ||
-    !isMicDevice(obj.micDevice)
+    !isMicDevice(obj.micDevice) ||
+    shortcutsHealed ||
+    folderHealed
   ) {
     void writeSettings(settings).catch(() => undefined);
   }
   return settings;
 }
+
+function defaultShortcuts(): Shortcuts {
+  return {
+    record: { ...DEFAULT_SHORTCUTS.record },
+    region: { ...DEFAULT_SHORTCUTS.region },
+  };
+}
+
+/**
+ * Each shortcut on its own, so one bad entry never discards the other. An absent
+ * field is an older file, not corruption: it gets the defaults quietly.
+ */
+function readShortcuts(raw: unknown, version: unknown): { shortcuts: Shortcuts; healed: boolean } {
+  const shortcuts = defaultShortcuts();
+  if (typeof raw !== 'object' || raw === null) return { shortcuts, healed: raw !== undefined };
+  const stored = raw as Record<string, unknown>;
+  let healed = false;
+  for (const action of SHORTCUT_ORDER) {
+    const entry = stored[action];
+    // Before v5 an entry was a bare string, and its defaults had four keys, which
+    // this version refuses. Those start again from the defaults.
+    if (typeof entry !== 'object' || entry === null) {
+      healed = true;
+      continue;
+    }
+    const { keys, enabled } = entry as { keys?: unknown; enabled?: unknown };
+    const check = normalizeAccelerator(keys);
+    if (check.ok) shortcuts[action].keys = check.value;
+    else healed = true;
+    if (typeof enabled === 'boolean') shortcuts[action].enabled = enabled;
+    else healed = true;
+  }
+  // Before v6, start/stop defaulted to Ctrl+Shift+R, switched off. Left exactly
+  // like that it was never a choice, just the old default: move it to the new
+  // one. Switched on, someone chose it, and it stays.
+  const record = shortcuts.record;
+  if (
+    typeof version === 'number' &&
+    version < 6 &&
+    record.keys === OLD_RECORD_KEYS &&
+    !record.enabled
+  ) {
+    shortcuts.record = { ...DEFAULT_SHORTCUTS.record };
+    healed = true;
+  }
+  // Two on one combination: the later one goes back to its own default keys and
+  // is switched off, rather than one press doing two things.
+  const seen = new Set<string>();
+  for (const action of SHORTCUT_ORDER) {
+    if (seen.has(shortcuts[action].keys)) {
+      console.error(`[settings] ${action} shortcut duplicated another; reset and switched off`);
+      shortcuts[action] = { keys: DEFAULT_SHORTCUTS[action].keys, enabled: false };
+      healed = true;
+    }
+    seen.add(shortcuts[action].keys);
+  }
+  return { shortcuts, healed };
+}
+
+/** A stored recordings folder: an absolute path of sane length, or nothing. */
+const isStoredFolder = (v: unknown): v is string =>
+  typeof v === 'string' && v.length > 0 && v.length < 1024 && isAbsolute(v);
 
 // --- Memory sampling (AC-6) ----------------------------------------------------
 //
@@ -541,8 +754,7 @@ function resolveInsideRecordings(channel: string, filePath: unknown): string {
   return target;
 }
 
-const isPlayable = (p: string): boolean =>
-  PLAYABLE_EXTENSIONS.includes(extname(p).toLowerCase());
+const isPlayable = (p: string): boolean => PLAYABLE_EXTENSIONS.includes(extname(p).toLowerCase());
 
 /* --- Folders inside the recordings folder -------------------------------------
  *
@@ -623,7 +835,9 @@ async function folderTotals(
 /** Every folder under the recordings folder, flattened and depth-first. */
 async function allFolders(relativeDir = '', depth = 0): Promise<FolderEntry[]> {
   if (depth > MAX_DEPTH) return [];
-  const dir = relativeDir ? join(getRecordingsDir(), ...relativeDir.split('/')) : getRecordingsDir();
+  const dir = relativeDir
+    ? join(getRecordingsDir(), ...relativeDir.split('/'))
+    : getRecordingsDir();
   const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
   const out: FolderEntry[] = [];
   for (const entry of entries.filter((e) => e.isDirectory()).sort(byName)) {
@@ -647,7 +861,9 @@ const byName = (a: { name: string }, b: { name: string }): number =>
 /** Every recording at or below a folder, as library items. Unsorted. */
 async function collectRecordings(relativeDir: string, depth = 0): Promise<RecordingListItem[]> {
   if (depth > MAX_DEPTH) return [];
-  const dir = relativeDir ? join(getRecordingsDir(), ...relativeDir.split('/')) : getRecordingsDir();
+  const dir = relativeDir
+    ? join(getRecordingsDir(), ...relativeDir.split('/'))
+    : getRecordingsDir();
   // A missing folder is an empty library, not an error (AC-2).
   const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
   const out: RecordingListItem[] = [];
@@ -901,12 +1117,39 @@ function registerIpc(): void {
     trayRefresh?.();
   });
 
+  // The tour happens on the bar, so the bar comes forward even when hidden.
+  // Held for collection when the bar is still loading, for the same reason as
+  // tellLibrary: a window being created has no listener yet.
+  ipcMain.handle('tour:start', (): void => {
+    const listening = barWindow && !barWindow.isDestroyed() && !barWindow.webContents.isLoading();
+    createBar();
+    if (listening && barWindow) {
+      pendingTour = false;
+      barWindow.webContents.send('tour:show');
+    } else {
+      pendingTour = true;
+    }
+    trayRefresh?.();
+  });
+
+  ipcMain.handle('tour:take-pending', (): boolean => {
+    const asked = pendingTour;
+    pendingTour = false;
+    return asked;
+  });
+
   ipcMain.handle('bar:hide', (): void => {
     barWindow?.hide();
     trayRefresh?.();
   });
 
   ipcMain.handle('region:select', (): Promise<RegionRect | null> => selectRegion());
+
+  ipcMain.handle('shortcuts:get', (): ShortcutStatus[] => shortcutStatuses());
+  ipcMain.handle('shortcuts:set', (_e, action: unknown, change: unknown): Promise<ShortcutUpdate> =>
+    setShortcut(action, change),
+  );
+  ipcMain.on('shortcuts:suspend', (_e, suspended: unknown) => suspendShortcuts(suspended === true));
 
   ipcMain.handle('capture:set-target', (_e, target: unknown): void => {
     const t = target as { kind?: unknown; id?: unknown; name?: unknown; rect?: unknown } | null;
@@ -951,12 +1194,12 @@ function registerIpc(): void {
     }
   });
 
-  ipcMain.handle('settings:get-audio', async (): Promise<AudioMode> => (await readSettings()).audio);
-
   ipcMain.handle(
-    'settings:get-mic',
-    async (): Promise<string> => (await readSettings()).micDevice,
+    'settings:get-audio',
+    async (): Promise<AudioMode> => (await readSettings()).audio,
   );
+
+  ipcMain.handle('settings:get-mic', async (): Promise<string> => (await readSettings()).micDevice);
 
   ipcMain.handle('settings:set-mic', async (_e, deviceId: unknown): Promise<void> => {
     if (!isMicDevice(deviceId)) {
@@ -983,6 +1226,52 @@ function registerIpc(): void {
   });
 
   ipcMain.handle('recordings:dir', () => getRecordingsDir());
+
+  ipcMain.handle('recordings:folder', (): RecordingsFolder => recordingsFolderState());
+
+  ipcMain.handle('recordings:choose-folder', async (): Promise<RecordingsFolderUpdate> => {
+    const unchanged = (problem: string | null): RecordingsFolderUpdate => ({
+      folder: recordingsFolderState(),
+      problem,
+      changed: false,
+    });
+    // A recording in progress is writing into the current folder.
+    if (active.size > 0) return unchanged('Finish the current recording first.');
+    const options: Electron.OpenDialogOptions = {
+      title: 'Choose where recordings are saved',
+      defaultPath: getRecordingsDir(),
+      properties: ['openDirectory', 'createDirectory'],
+    };
+    const parent = libraryWindow && !libraryWindow.isDestroyed() ? libraryWindow : null;
+    const result = parent
+      ? await dialog.showOpenDialog(parent, options)
+      : await dialog.showOpenDialog(options);
+    const picked = result.filePaths[0];
+    if (result.canceled || !picked) return unchanged(null);
+    const folder = resolve(picked);
+    const problem = await folderProblem(folder);
+    if (problem) return unchanged(problem);
+    try {
+      return await setRecordingsFolder(folder);
+    } catch (err) {
+      fail('recordings:choose-folder', err);
+    }
+  });
+
+  ipcMain.handle('recordings:default-folder', async (): Promise<RecordingsFolderUpdate> => {
+    if (active.size > 0) {
+      return {
+        folder: recordingsFolderState(),
+        problem: 'Finish the current recording first.',
+        changed: false,
+      };
+    }
+    try {
+      return await setRecordingsFolder(null);
+    } catch (err) {
+      fail('recordings:default-folder', err);
+    }
+  });
 
   ipcMain.handle('recordings:free-space', (): Promise<number | null> => freeSpaceBytes());
 
@@ -1160,7 +1449,12 @@ function registerIpc(): void {
     if (entries === null) {
       // A missing folder is an empty listing, not an error (AC-2). It also
       // happens when a folder is deleted in Explorer while the UI sits in it.
-      return { path: rel, name: rel ? rel.split('/').pop() ?? rel : basename(getRecordingsDir()), folders: [], files: [] };
+      return {
+        path: rel,
+        name: rel ? (rel.split('/').pop() ?? rel) : basename(getRecordingsDir()),
+        folders: [],
+        files: [],
+      };
     }
 
     const folders: FolderEntry[] = [];
@@ -1218,7 +1512,10 @@ function registerIpc(): void {
       const rel = parentRel ? `${parentRel}/${name.trim()}` : name.trim();
       const target = resolveRelative('recordings:create-folder', rel);
       if (existsSync(target)) {
-        fail('recordings:create-folder', new Error(`There is already something called "${name}" here`));
+        fail(
+          'recordings:create-folder',
+          new Error(`There is already something called "${name}" here`),
+        );
       }
       try {
         mkdirSync(target, { recursive: true });
@@ -1279,7 +1576,10 @@ function registerIpc(): void {
     for (const rec of active.values()) {
       const inside = (p: string): boolean => resolve(p).startsWith(dir + sep);
       if (inside(rec.finalPath) || inside(rec.partPath)) {
-        fail('recordings:delete-folder', new Error('A recording in that folder is still being written'));
+        fail(
+          'recordings:delete-folder',
+          new Error('A recording in that folder is still being written'),
+        );
       }
     }
     try {
@@ -1288,7 +1588,9 @@ function registerIpc(): void {
       const detail = err instanceof Error ? err.message : String(err);
       fail(
         'recordings:delete-folder',
-        new Error(`Could not move that folder to the Recycle Bin (${detail}). It was left in place.`),
+        new Error(
+          `Could not move that folder to the Recycle Bin (${detail}). It was left in place.`,
+        ),
       );
     }
   });
@@ -1639,6 +1941,7 @@ function createTray(): void {
         },
         {
           label: recordingNow ? 'Stop recording' : 'Start recording',
+          ...shownShortcut('record'),
           // The bar decides what this means -- it holds the recorder and knows
           // what is currently selected.
           click: () => barWindow?.webContents.send('hud:command', 'toggle'),
@@ -1656,6 +1959,149 @@ function createTray(): void {
   tray.on('click', () => toggleBar());
 }
 
+/* ---------------------------------------------------------------- shortcuts */
+
+/**
+ * What each global shortcut does. The bar decides what "start or stop" means,
+ * since only it knows what is selected to record.
+ */
+const SHORTCUT_HANDLERS: Record<ShortcutAction, () => void> = {
+  record: () => barWindow?.webContents.send('hud:command', 'toggle'),
+  region: () => barWindow?.webContents.send('hud:command', 'record-region'),
+};
+
+let shortcuts: Shortcuts = defaultShortcuts();
+const shortcutStates: Record<ShortcutAction, ShortcutState> = { record: 'off', region: 'off' };
+/** True while Settings is listening for a new combination. */
+let shortcutsSuspended = false;
+
+const keysOf = (accelerator: string): string => acceleratorKeys(accelerator).join('+');
+
+/**
+ * Register every shortcut that is switched on, from scratch, and record what
+ * really happened.
+ *
+ * `register` returns false when Windows or another program already holds the
+ * combination. That is reported as `taken`, never displayed as working: a
+ * shortcut that silently does nothing is the failure this list exists to avoid.
+ */
+function applyShortcuts(): void {
+  globalShortcut.unregisterAll();
+  for (const action of SHORTCUT_ORDER) {
+    const { keys, enabled } = shortcuts[action];
+    if (!enabled) {
+      shortcutStates[action] = 'off';
+      continue;
+    }
+    // Suspended: the state still describes what comes back afterwards.
+    if (shortcutsSuspended) continue;
+    const ok = globalShortcut.register(keys, SHORTCUT_HANDLERS[action]);
+    if (!ok && shortcutStates[action] !== 'taken') {
+      console.error(
+        `[shortcut] ${keysOf(keys)} is taken; "${SHORTCUT_LABELS[action]}" will not work until another is chosen`,
+      );
+    }
+    shortcutStates[action] = ok ? 'on' : 'taken';
+  }
+  trayRefresh?.();
+}
+
+function shortcutStatuses(): ShortcutStatus[] {
+  return SHORTCUT_ORDER.map((action) => ({
+    action,
+    accelerator: shortcuts[action].keys,
+    enabled: shortcuts[action].enabled,
+    state: shortcutStates[action],
+  }));
+}
+
+/** Shown beside a tray item only when pressing it would actually work. */
+function shownShortcut(action: ShortcutAction): {
+  accelerator?: string;
+  registerAccelerator?: boolean;
+} {
+  return shortcutStates[action] === 'on'
+    ? { accelerator: shortcuts[action].keys, registerAccelerator: false }
+    : {};
+}
+
+function suspendShortcuts(suspended: boolean): void {
+  if (shortcutsSuspended === suspended) return;
+  shortcutsSuspended = suspended;
+  applyShortcuts();
+}
+
+/** Why the validator refused, in the terms of the person pressing keys. */
+function acceleratorProblem(reason: string): string {
+  if (reason === 'needs Ctrl, Alt or Win') {
+    return 'Add Ctrl, Alt or Win. On its own that key would stop working in every other program.';
+  }
+  if (reason === 'more than three keys') return 'Use three keys at most, such as Win + Shift + Q.';
+  if (reason === 'unknown key') {
+    return 'That key cannot be used. Letters, numbers, F1–F24 and the arrow and page keys can.';
+  }
+  return 'That combination cannot be used.';
+}
+
+/**
+ * Change one shortcut's keys, switch it on or off, or both.
+ *
+ * A combination about to be registered is *probed* first: if Windows or another
+ * program holds it, nothing changes and the page is told why.
+ *
+ * Choosing a combination is the end of listening for one, so this also lifts the
+ * suspension -- on every path, refusals included, or a refused choice would
+ * leave every shortcut switched off behind it.
+ */
+async function setShortcut(action: unknown, change: unknown): Promise<ShortcutUpdate> {
+  shortcutsSuspended = false;
+  if (!isShortcutAction(action) || typeof change !== 'object' || change === null) {
+    applyShortcuts();
+    fail('shortcuts:set', new Error(`Bad shortcut change for ${String(action)}`));
+  }
+  const refuse = (problem: string): ShortcutUpdate => {
+    applyShortcuts();
+    return { shortcuts: shortcutStatuses(), problem };
+  };
+
+  const current = shortcuts[action];
+  const asked = change as { keys?: unknown; enabled?: unknown };
+  let keys = current.keys;
+  if (asked.keys !== undefined) {
+    const check = normalizeAccelerator(asked.keys);
+    if (!check.ok) return refuse(acceleratorProblem(check.reason));
+    keys = check.value;
+  }
+  const enabled = typeof asked.enabled === 'boolean' ? asked.enabled : current.enabled;
+
+  const clash = SHORTCUT_ORDER.find((other) => other !== action && shortcuts[other].keys === keys);
+  if (clash) return refuse(`${keysOf(keys)} is already set for “${SHORTCUT_LABELS[clash]}”.`);
+
+  if (enabled && (keys !== current.keys || !current.enabled)) {
+    // Our own registrations go first, or one of them would look like the thief.
+    globalShortcut.unregisterAll();
+    const free = globalShortcut.register(keys, () => undefined);
+    if (free) globalShortcut.unregister(keys);
+    if (!free) {
+      return refuse(
+        `${keysOf(keys)} is already used by Windows or another program. Choose another.`,
+      );
+    }
+  }
+
+  const next: Shortcuts = { ...shortcuts, [action]: { keys, enabled } };
+  try {
+    const stored = await readSettings();
+    await writeSettings({ ...stored, version: SETTINGS_VERSION, shortcuts: next });
+  } catch (err) {
+    applyShortcuts();
+    fail('shortcuts:set', err);
+  }
+  shortcuts = next;
+  applyShortcuts();
+  return { shortcuts: shortcutStatuses(), problem: null };
+}
+
 /* ---------------------------------------------------------------------- bar */
 
 let barWindow: BrowserWindow | null = null;
@@ -1670,6 +2116,7 @@ let libraryWindow: BrowserWindow | null = null;
  */
 let pendingReveal: RevealRequest | null = null;
 let pendingTab: LibraryTab | null = null;
+let pendingTour = false;
 
 /**
  * Say something to the recordings window, opening it if it is not there.
@@ -1810,7 +2257,6 @@ function registerHudRelay(): void {
   });
 }
 
-
 function createLibraryWindow(): void {
   const win = new BrowserWindow({
     width: 1100,
@@ -1834,7 +2280,12 @@ function createLibraryWindow(): void {
   // recorder, and a capture in progress must survive this window going away.
   win.on('closed', () => {
     libraryWindow = null;
+    suspendShortcuts(false);
   });
+  // Settings suspends every shortcut while it listens for a new one. The page
+  // resumes them itself; these are the guarantee for a page that never does.
+  win.on('blur', () => suspendShortcuts(false));
+  win.on('hide', () => suspendShortcuts(false));
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url);
@@ -1900,9 +2351,21 @@ app.on('second-instance', () => {
 // disk. Errors during startup are exactly the ones with no console present.
 if (primaryInstance) log.start(join(app.getPath('userData'), 'logs'));
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   if (!primaryInstance) return;
   migrateSettingsFromOldName();
+  // First, because the recordings folder may be the user's choice, and crash
+  // recovery, the protocol and the bar's first free-space check all read it.
+  const settings = await readSettings();
+  configureRecordingsDir(settings.recordingsDir);
+  shortcuts = settings.shortcuts;
+  // A fresh install opens with the tour of the bar, once. The bar collects it on
+  // mount; it is marked seen now, so closing the app mid-tour does not repeat it.
+  if (!settings.tourSeen) {
+    pendingTour = true;
+    void writeSettings({ ...settings, tourSeen: true }).catch(() => undefined);
+  }
+
   registerDisplayMediaHandler();
   registerRecordingProtocol();
   registerIpc();
@@ -1915,12 +2378,9 @@ app.whenReady().then(() => {
   // can bring it back.
   createTray();
 
-  // Start and stop without reaching for the bar, which is the point of a hotkey
-  // on a recorder: the moment worth capturing rarely waits.
-  const registered = globalShortcut.register('Control+Shift+R', () => {
-    if (barWindow && !barWindow.isDestroyed()) barWindow.webContents.send('hud:command', 'toggle');
-  });
-  if (!registered) console.error('[shortcut] Ctrl+Shift+R is taken; the bar still works');
+  // Reach the recorder without reaching for the bar, which is the point of a
+  // hotkey on a recorder: the moment worth capturing rarely waits.
+  applyShortcuts();
 
   app.on('activate', () => createBar());
 });

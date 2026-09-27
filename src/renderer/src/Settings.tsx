@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react';
 import MicPicker from './MicPicker.js';
-import { DEFAULT_QUALITY, QUALITY_PRESETS, type QualityPreset } from '../../shared/types.js';
+import Shortcuts from './Shortcuts.js';
+import {
+  DEFAULT_QUALITY,
+  QUALITY_PRESETS,
+  type QualityPreset,
+  type RecordingsFolder,
+  type RecordingsFolderUpdate,
+} from '../../shared/types.js';
 import { FolderIcon } from './icons.js';
 
 /**
@@ -12,9 +19,16 @@ import { FolderIcon } from './icons.js';
  * buttons. There is deliberately one copy of each control, not one here and one
  * on the bar.
  */
-export default function Settings(): React.JSX.Element {
+export default function Settings({
+  onFolderChanged,
+}: {
+  /** The recordings folder moved: the window's footer and library follow it. */
+  onFolderChanged: (path: string) => void;
+}): React.JSX.Element {
   const [quality, setQuality] = useState<QualityPreset>(DEFAULT_QUALITY);
-  const [dir, setDir] = useState('');
+  const [folder, setFolder] = useState<RecordingsFolder | null>(null);
+  const [folderProblem, setFolderProblem] = useState<string | null>(null);
+  const [choosing, setChoosing] = useState(false);
   const [free, setFree] = useState<number | null>(null);
 
   useEffect(() => {
@@ -23,14 +37,30 @@ export default function Settings(): React.JSX.Element {
       .then(setQuality)
       .catch(() => undefined);
     window.api
-      .getRecordingsDir()
-      .then(setDir)
+      .getRecordingsFolder()
+      .then(setFolder)
       .catch(() => undefined);
     window.api
       .getFreeSpace()
       .then(setFree)
       .catch(() => undefined);
   }, []);
+
+  const changeFolder = (ask: () => Promise<RecordingsFolderUpdate>): void => {
+    setFolderProblem(null);
+    setChoosing(true);
+    ask()
+      .then((update) => {
+        setFolder(update.folder);
+        setFolderProblem(update.problem);
+        if (!update.changed) return;
+        onFolderChanged(update.folder.path);
+        // Free space is per drive, and the new folder may be on another one.
+        return window.api.getFreeSpace().then(setFree);
+      })
+      .catch(() => setFolderProblem('The folder could not be changed.'))
+      .finally(() => setChoosing(false));
+  };
 
   return (
     <section className="page">
@@ -67,22 +97,53 @@ export default function Settings(): React.JSX.Element {
         <MicPicker disabled={false} />
       </div>
 
+      <Shortcuts />
+
       <div className="page__group">
         <h2 className="page__heading">Where recordings are saved</h2>
-        <p className="page__path">{dir || '…'}</p>
+        <p className="page__path">{folder?.path ?? '…'}</p>
+        {folder?.unavailable && (
+          <p className="page__note is-warn">
+            {folder.unavailable} is not available, so recordings are saved here until it is.
+          </p>
+        )}
         <p className="page__note">
-          {free === null
-            ? 'Recordings are saved here as they are made, so nothing is lost if the app closes.'
-            : `${(free / 1e9).toFixed(1)} GB free on this drive.`}
+          {free !== null && `${(free / 1e9).toFixed(1)} GB free on this drive. `}
+          Changing the folder does not move recordings already made.
         </p>
-        <button
-          type="button"
-          className="link"
-          onClick={() => void window.api.revealFolder('').catch(() => undefined)}
-        >
-          <FolderIcon />
-          Open in Explorer
-        </button>
+        <div className="page__actions">
+          <button
+            type="button"
+            className="link"
+            disabled={choosing}
+            onClick={() => changeFolder(() => window.api.chooseRecordingsFolder())}
+          >
+            Change…
+          </button>
+          {folder && !folder.isDefault && (
+            <button
+              type="button"
+              className="link"
+              disabled={choosing}
+              onClick={() => changeFolder(() => window.api.useDefaultRecordingsFolder())}
+            >
+              Use the default folder
+            </button>
+          )}
+          <button
+            type="button"
+            className="link"
+            onClick={() => void window.api.revealFolder('').catch(() => undefined)}
+          >
+            <FolderIcon />
+            Open in Explorer
+          </button>
+        </div>
+        {folderProblem && (
+          <p className="page__note is-warn" role="alert">
+            {folderProblem}
+          </p>
+        )}
       </div>
     </section>
   );

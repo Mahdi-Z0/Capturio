@@ -30,6 +30,9 @@ export default function App(): React.JSX.Element {
   const [dir, setDir] = useState('');
   const [savedKey, setSavedKey] = useState<string | null>(null);
   const [tab, setTab] = useState<LibraryTab>('recordings');
+  // Bumped when the recordings folder changes: the library remounts at the top
+  // of the new folder, rather than holding a path and selection from the old one.
+  const [libraryKey, setLibraryKey] = useState(0);
 
   useEffect(() => {
     window.api
@@ -82,9 +85,16 @@ export default function App(): React.JSX.Element {
           selection and a player, and losing those on a trip to Settings would
           be its own small annoyance. */}
       <div className={`view ${tab === 'recordings' ? '' : 'is-hidden'}`}>
-        <Library refreshKey={savedKey} />
+        <Library key={libraryKey} refreshKey={savedKey} />
       </div>
-      {tab === 'settings' && <Settings />}
+      {tab === 'settings' && (
+        <Settings
+          onFolderChanged={(path) => {
+            setDir(path);
+            setLibraryKey((k) => k + 1);
+          }}
+        />
+      )}
       {tab === 'help' && <Help />}
 
       <footer className="where">

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRecorder } from './useRecorder.js';
 import WindowPicker from './WindowPicker.js';
+import TourCard, { TOUR_STEPS } from './Tour.js';
 import {
   AUDIO_MODES,
   DEFAULT_AUDIO_MODE,
@@ -10,6 +11,7 @@ import {
   type CaptureTarget,
   type Recording,
   type RegionRect,
+  type ShortcutStatus,
 } from '../../shared/types.js';
 import {
   CheckIcon,
@@ -88,6 +90,10 @@ export default function Bar(): React.JSX.Element {
   // `lastSaved` never clears, so the card is derived from it plus the one thing
   // that can put it away: which save has been dismissed, by hand or by timeout.
   const [dismissedSave, setDismissedSave] = useState<string | null>(null);
+  // Which tour step is showing, or null. Started once on a fresh install's first
+  // launch, and from Help whenever asked for.
+  const [tourStep, setTourStep] = useState<number | null>(null);
+  const [tourShortcuts, setTourShortcuts] = useState<ShortcutStatus[]>([]);
   const shellRef = useRef<HTMLDivElement>(null);
 
   const recording = status === 'recording';
@@ -96,6 +102,9 @@ export default function Bar(): React.JSX.Element {
   // Derived, not stored: recording closes any open panel, and an effect that
   // wrote that back into state would render the dead panel for one frame first.
   const openPanel: Panel = locked ? 'none' : panel;
+  // A recording that starts mid-tour ends it: the buttons it points at are gone.
+  const touring = tourStep !== null && !locked;
+  const tourTarget = touring ? (TOUR_STEPS[tourStep]?.target ?? null) : null;
 
   useEffect(() => {
     window.api
@@ -115,7 +124,6 @@ export default function Bar(): React.JSX.Element {
     window.addEventListener('focus', checkSpace);
     return () => window.removeEventListener('focus', checkSpace);
   }, [lastSaved]);
-
 
   const setAudioMode = useCallback((next: AudioMode) => {
     setAudio(next);
@@ -174,15 +182,69 @@ export default function Bar(): React.JSX.Element {
     return () => clearTimeout(timer);
   }, [lastSaved]);
 
-  // Ctrl+Shift+R, relayed by main. The bar answers it rather than the recorder,
-  // because only the bar knows what is currently chosen to record.
+  // The region selector resolves long after the shortcut that opened it, and in
+  // between another shortcut may have started a recording. Read the recorder as
+  // it is *then*, not as it was when the selector opened, or a stale start() whose
+  // own guard still saw 'idle' would open a second recorder on a second file.
+  const latest = useRef({ start, locked });
+  useEffect(() => {
+    latest.current = { start, locked };
+  });
+
+  // Global shortcuts and the tray, relayed by main. The bar answers them rather
+  // than the recorder, because only the bar knows what is currently chosen.
   useEffect(() => {
     return window.api.onHudCommand((command) => {
-      if (command !== 'toggle') return;
-      if (recording) stop();
-      else if (!busy && target) void start(target);
+      if (command === 'toggle') {
+        if (recording) stop();
+        else if (!busy && target) void start(target);
+      } else if (command === 'record-region') {
+        // Mid-recording it does nothing: stopping is the other shortcut's job.
+        if (locked) return;
+        setPanel('none');
+        window.api
+          .selectRegion()
+          .then((rect) => {
+            if (!rect || latest.current.locked) return;
+            // Left selected afterwards, so the next plain start records it again.
+            setRegion(rect);
+            setSource('region');
+            void latest.current.start({ kind: 'region', rect });
+          })
+          .catch(() => undefined);
+      }
     });
-  }, [recording, busy, target, start, stop]);
+  }, [recording, busy, locked, target, start, stop]);
+
+  // The tour, asked for from the recordings window. Main brings the bar forward
+  // first; the shortcuts are read now so the steps name the ones that work.
+  useEffect(() => {
+    const begin = (): void => {
+      setPanel('none');
+      setTourStep(0);
+      window.api
+        .getShortcuts()
+        .then(setTourShortcuts)
+        .catch(() => undefined);
+    };
+    window.api
+      .takePendingTour()
+      .then((asked) => asked && begin())
+      .catch(() => undefined);
+    return window.api.onTour(begin);
+  }, []);
+
+  useEffect(() => {
+    if (!touring) return undefined;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setTourStep(null);
+      else if (e.key === 'ArrowRight')
+        setTourStep((s) => (s === null ? s : Math.min(s + 1, TOUR_STEPS.length - 1)));
+      else if (e.key === 'ArrowLeft') setTourStep((s) => (s === null ? s : Math.max(s - 1, 0)));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [touring]);
 
   const spec = AUDIO_MODES[audio];
 
@@ -213,11 +275,11 @@ export default function Bar(): React.JSX.Element {
     // the shell taller too, and a window shorter than its content clips them.
     const height = Math.max(BAR_HEIGHT, shellRef.current?.scrollHeight ?? BAR_HEIGHT);
     window.api.resizeBar(Math.ceil(height));
-  }, [openPanel, source, windowTarget, audio, recording, note, savedCard]);
+  }, [openPanel, source, windowTarget, audio, recording, note, savedCard, tourStep, touring]);
 
   return (
-    <div className="barShell" ref={shellRef}>
-      <div className={`bar ${recording ? 'is-recording' : ''}`}>
+    <div className="barShell" ref={shellRef} data-touring={tourTarget ?? undefined}>
+      <div className={`bar ${recording ? 'is-recording' : ''}`} data-tour="bar">
         {recording || busy ? (
           <>
             <span className={`bar__live ${paused ? 'is-paused' : ''}`} aria-hidden="true" />
@@ -269,7 +331,12 @@ export default function Bar(): React.JSX.Element {
           </>
         ) : (
           <>
-            <div className="bar__group" role="radiogroup" aria-label="What to record">
+            <div
+              className="bar__group"
+              role="radiogroup"
+              aria-label="What to record"
+              data-tour="source"
+            >
               {(
                 [
                   ['screen', 'Whole screen', <ScreenIcon key="s" />],
@@ -292,7 +359,7 @@ export default function Bar(): React.JSX.Element {
               ))}
             </div>
 
-            <div className="bar__group">
+            <div className="bar__group" data-tour="sound">
               <button
                 type="button"
                 aria-pressed={spec.system}
@@ -318,6 +385,7 @@ export default function Bar(): React.JSX.Element {
             <button
               type="button"
               className="record"
+              data-tour="record"
               onClick={() => target && void start(target)}
               disabled={busy || target === null}
               title={target === null ? 'Choose what to record first' : 'Start recording'}
@@ -330,6 +398,7 @@ export default function Bar(): React.JSX.Element {
               <button
                 type="button"
                 className="icon"
+                data-tour="windows"
                 onClick={() => void window.api.openLibraryAt('settings').catch(() => undefined)}
                 title="Settings"
                 aria-label="Settings"
@@ -339,6 +408,7 @@ export default function Bar(): React.JSX.Element {
               <button
                 type="button"
                 className="icon"
+                data-tour="windows"
                 onClick={() => void window.api.openLibrary()}
                 title="Recordings"
                 aria-label="Recordings"
@@ -348,6 +418,7 @@ export default function Bar(): React.JSX.Element {
               <button
                 type="button"
                 className="icon icon--quit"
+                data-tour="hide"
                 onClick={() => void window.api.hideBar()}
                 title="Hide — bring it back from the tray icon"
                 aria-label="Hide the bar"
@@ -359,18 +430,33 @@ export default function Bar(): React.JSX.Element {
         )}
       </div>
 
+      {/* Straight under the bar, so the caret meets what it points at. */}
+      {touring && tourStep !== null && (
+        <TourCard
+          index={tourStep}
+          shortcuts={tourShortcuts}
+          onBack={() => setTourStep((s) => (s === null ? s : Math.max(s - 1, 0)))}
+          onNext={() =>
+            setTourStep((s) => (s === null ? s : Math.min(s + 1, TOUR_STEPS.length - 1)))
+          }
+          onClose={() => setTourStep(null)}
+        />
+      )}
+
       {note && (
-        <p className={`note ${error ?? captureInfo?.audioNote ? 'is-warn' : ''}`} role="status">
+        <p className={`note ${(error ?? captureInfo?.audioNote) ? 'is-warn' : ''}`} role="status">
           {note}
         </p>
       )}
 
-      {savedCard && !recording && (
+      {savedCard && !recording && !touring && (
         <div className="saved" role="status">
           <button
             type="button"
             className="saved__main"
-            onClick={() => void window.api.revealInLibrary(savedCard.filePath, false).catch(() => undefined)}
+            onClick={() =>
+              void window.api.revealInLibrary(savedCard.filePath, false).catch(() => undefined)
+            }
             title="Show it in the recordings window"
           >
             <span className="saved__tick" aria-hidden="true">
@@ -388,14 +474,18 @@ export default function Bar(): React.JSX.Element {
             <button
               type="button"
               className="saved__action"
-              onClick={() => void window.api.revealInLibrary(savedCard.filePath, true).catch(() => undefined)}
+              onClick={() =>
+                void window.api.revealInLibrary(savedCard.filePath, true).catch(() => undefined)
+              }
             >
               Play
             </button>
             <button
               type="button"
               className="saved__action"
-              onClick={() => void window.api.revealInLibrary(savedCard.filePath, false).catch(() => undefined)}
+              onClick={() =>
+                void window.api.revealInLibrary(savedCard.filePath, false).catch(() => undefined)
+              }
             >
               Show in library
             </button>
@@ -421,7 +511,6 @@ export default function Bar(): React.JSX.Element {
           />
         </div>
       )}
-
     </div>
   );
 }

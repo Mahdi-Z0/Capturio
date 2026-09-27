@@ -22,7 +22,7 @@ from a built-in recordings window. The app itself is a floating control bar.
 | v0.4    | Window, region and the bar | 2     | ✅ Shipped | 2026-09-23 |
 | v0.5    | Identity and shipping     | 1      | ✅ Shipped | 2026-09-25 |
 | v0.6    | A library worth using     | 1      | ✅ Shipped | 2026-09-27 |
-| v0.7    | Shortcuts and a tour      | 1      | ⬜ Next    | -          |
+| v0.7    | Shortcuts and a tour      | 1      | ✅ Shipped | 2026-09-27 |
 | v1.0    | Microsoft Store           | 1      | ⬜ Blocked on the user's Partner Center identity | - |
 
 ## ⬜ Next Milestone: v0.7 Shortcuts and a tour
@@ -37,8 +37,8 @@ Agreed with the user, in this order:
    that did not take instead of displaying it as if it works. Ctrl+Shift+R already exists and already
    logs `[shortcut] Ctrl+Shift+R is taken` when it loses the race — that is the precedent to follow.
 2. **A short "show me around" tour.** Highlights the real buttons on the live bar, launched from
-   Settings and from Help. Explicitly **not** shown on first run — the user decided against that
-   ("bar only window on first run, no tutorial"). The Help view now covers the same ground in prose,
+   Help. *Originally* not to be shown on first run ("bar only window on first run, no tutorial");
+   after trying it, the user reversed that — it now runs once on a fresh install's first launch. The Help view now covers the same ground in prose,
    so this is a small addition rather than onboarding, and it may reasonably be dropped.
 
 ## Phases
@@ -52,7 +52,7 @@ Agreed with the user, in this order:
 | 5     | Playback and controls   | 2     | ✅ Complete | 2026-09-23 |
 | 6     | Packaging and identity  | 1     | ✅ Complete | 2026-09-25 |
 | 7     | Library and window UX   | 1     | ✅ Complete | 2026-09-27 |
-| 8     | Shortcuts and a tour    | TBD   | ⬜ Next     | -          |
+| 8     | Shortcuts and a tour    | 4     | ✅ Complete | 2026-09-27 |
 | 9     | Microsoft Store (MSIX)  | TBD   | ⬜ Waiting  | -          |
 
 Phases 6 and 7 were built **conversationally**, not through PLAN → APPLY → UNIFY: the user drove them
@@ -159,7 +159,19 @@ expected to do.
 See `.paul/phases/07-library-and-window-ux/07-01-SUMMARY.md`. The user's original six-item list was
 worked in the agreed order 5 → 3 → 4 → 2, with items 1 and 6 remaining (Phase 8).
 
-### Phase 8: Shortcuts and a tour — ⬜ next
+### Phase 8: Shortcuts and a tour — ✅ complete 2026-09-27
+
+**08-01 (2026-09-27):** three configurable global shortcuts, honest about ones that did not register,
+plus a tray icon that had never been created and a single-instance lock. See `08-01-SUMMARY.md`.
+**08-02 (2026-09-27):** a six-step tour of the live bar, from Help. Built at the user's request to
+judge in use; it may be removed. See `08-02-SUMMARY.md`.
+
+**08-03 (2026-09-27):** the user's revisions after trying it — two shortcuts (region on by default at
+Win+Shift+Q, start/stop off), three keys max, show/hide removed, Help cut to the tricky parts — plus a
+recordings folder the user can choose. See `08-03-SUMMARY.md`.
+
+**08-04 (2026-09-27):** the user approved the tour and asked for it on a fresh install's first launch;
+start/stop moved off Ctrl+Shift+R (a browser's hard reload) to Win+Shift+Z. See `08-04-SUMMARY.md`.
 
 **Goal:** As described under the v0.7 milestone above.
 

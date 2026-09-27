@@ -1,129 +1,99 @@
-import {
-  CloseIcon,
-  LibraryIcon,
-  MicIcon,
-  PauseIcon,
-  RegionIcon,
-  ScreenIcon,
-  SlidersIcon,
-  SpeakerIcon,
-  StopIcon,
-  WindowIcon,
-} from './icons.js';
+import { useEffect, useState } from 'react';
+import { Keys } from './Shortcuts.js';
+import { SHORTCUT_LABELS, type ShortcutStatus } from '../../shared/types.js';
 
 /**
- * What the bar's buttons do.
- *
- * The same icons as the bar itself, so this reads as a key to the thing on screen
- * rather than a manual written about it. Whatever is true of the app belongs
- * here; nothing aspirational.
+ * Only what is not obvious from the bar itself. Anyone who has used a screen
+ * recorder knows what a record button does; these are the things that behave
+ * differently from what they would guess.
  */
-const CONTROLS: { icon: React.JSX.Element; name: string; what: string }[] = [
-  { icon: <ScreenIcon />, name: 'Whole screen', what: 'Records everything on the main display.' },
+const WORTH_KNOWING: { name: string; what: string }[] = [
   {
-    icon: <WindowIcon />,
-    name: 'A window',
-    what: 'Pick one window. Only that window is recorded, even if something covers it — but a minimised window gives Windows no frames to record.',
+    name: 'Recording a window',
+    what: 'Only that window is recorded, even when something covers it. A minimised window records nothing.',
   },
   {
-    icon: <RegionIcon />,
-    name: 'A region',
-    what: 'Drag out a rectangle. A red outline marks it while it records, and the outline itself never appears in the recording.',
+    name: 'Recording a region',
+    what: 'The red outline marks the area. It never appears in the recording, and neither does the bar.',
   },
   {
-    icon: <SpeakerIcon />,
-    name: 'Computer sound',
-    what: 'Records what you hear. Independent of the microphone: either, both or neither.',
+    name: 'Sound',
+    what: 'Computer sound and microphone are separate switches, mixed into one track. Pick the microphone in Settings.',
   },
   {
-    icon: <MicIcon />,
-    name: 'Microphone',
-    what: 'Records what you say. Both sources are mixed into one track. Choose which microphone in Settings.',
+    name: 'While recording',
+    what: 'The recordings window steps aside so it is not recorded. Open it again from the bar.',
   },
   {
-    icon: <PauseIcon />,
-    name: 'Pause',
-    what: 'While recording. Picks up where it left off — one file, no gap.',
+    name: 'Hidden bar',
+    what: 'The tray icon brings it back, and so does opening Capturio again.',
   },
   {
-    icon: <StopIcon />,
-    name: 'Stop',
-    what: 'Finishes the recording and saves it. A card appears with the name, Play, and Show in library.',
+    name: 'Several at once',
+    what: 'Ctrl-click or Shift-click to select several recordings. Drag them onto a folder, or onto the path above the list.',
   },
-  { icon: <SlidersIcon />, name: 'Settings', what: 'Quality, microphone, and where files go.' },
-  { icon: <LibraryIcon />, name: 'Recordings', what: 'Opens this window.' },
   {
-    icon: <CloseIcon />,
-    name: 'Hide the bar',
-    what: 'Hides it without closing the app. The tray icon brings it back.',
+    name: 'Deleting',
+    what: 'Recordings and folders go to the Recycle Bin, unless you choose Delete permanently.',
+  },
+  {
+    name: 'Interrupted recordings',
+    what: 'If Capturio or the PC stops mid-recording, what was recorded is recovered the next time it starts.',
   },
 ];
 
 export default function Help(): React.JSX.Element {
+  // The real combinations and whether they work, not the defaults: a key that
+  // someone has changed, switched off, or lost to another program must not be
+  // listed as if it works.
+  const [shortcuts, setShortcuts] = useState<ShortcutStatus[]>([]);
+  useEffect(() => {
+    window.api
+      .getShortcuts()
+      .then(setShortcuts)
+      .catch(() => undefined);
+  }, []);
+
   return (
     <section className="page">
       <div className="page__group">
-        <h2 className="page__heading">The bar is the app</h2>
-        <p className="page__note">
-          Capturio is the floating bar, not a window you visit. Choose what to record, switch sound
-          on or off, press the red button. Nothing else has to be open, and neither the bar nor the
-          region outline appears in what you record.
-        </p>
-      </div>
-
-      <div className="page__group">
-        <h2 className="page__heading">Every button</h2>
+        <h2 className="page__heading">Shortcuts</h2>
         <ul className="keys">
-          {CONTROLS.map((control) => (
-            <li key={control.name} className="keys__row">
-              <span className="keys__icon" aria-hidden="true">
-                {control.icon}
+          {shortcuts.map((s) => (
+            <li key={s.action} className="keys__row">
+              <span className="keys__name">
+                <Keys accelerator={s.accelerator} />
               </span>
-              <span className="keys__name">{control.name}</span>
-              <span className="keys__what">{control.what}</span>
+              <span className="keys__what">
+                {SHORTCUT_LABELS[s.action]}
+                {s.state === 'off' && <span className="keys__off"> · Off</span>}
+                {s.state === 'taken' && (
+                  <span className="keys__warn"> · In use by Windows or another program</span>
+                )}
+              </span>
             </li>
           ))}
         </ul>
       </div>
 
       <div className="page__group">
-        <h2 className="page__heading">Without touching the bar</h2>
-        <p className="page__note">
-          <kbd className="kbd">Ctrl</kbd> + <kbd className="kbd">Shift</kbd> +{' '}
-          <kbd className="kbd">R</kbd> starts and stops a recording from anywhere, using whatever the
-          bar currently has selected. The tray icon does the same, and brings the bar back when it is
-          hidden.
-        </p>
-      </div>
-
-      <div className="page__group">
-        <h2 className="page__heading">Your recordings</h2>
-        <p className="page__note">
-          Click one to select it, double-click to play it here, right-click for everything else.
-          Ctrl-click adds to the selection and shift-click takes a run, so a morning's recordings can
-          be filed or binned in one go. Make folders with <strong>New folder</strong> and drag
-          recordings into them — or onto the breadcrumb to move them back out. Deleting sends things
-          to the Recycle Bin unless you choose <strong>Delete permanently</strong>.
-        </p>
-      </div>
-
-      <div className="page__group">
         <h2 className="page__heading">Worth knowing</h2>
-        <ul className="page__list">
-          <li>
-            Recordings are finished off the moment they are saved, which is what lets you scrub
-            through them. A recording made before that was added reports no length, and the player
-            says so when you open one.
-          </li>
-          <li>
-            If the app or the machine stops mid-recording, the part that was written is kept and
-            reclaimed the next time Capturio starts.
-          </li>
-          <li>
-            Dark gradients can show faint banding. That comes from how browsers encode video and
-            cannot be turned off here; a higher quality setting reduces it.
-          </li>
+        <ul className="keys">
+          {WORTH_KNOWING.map((item) => (
+            <li key={item.name} className="keys__row">
+              <span className="keys__name">{item.name}</span>
+              <span className="keys__what">{item.what}</span>
+            </li>
+          ))}
         </ul>
+        {/* The same tour a fresh install opens with, on the live bar. */}
+        <button
+          type="button"
+          className="link"
+          onClick={() => void window.api.startTour().catch(() => undefined)}
+        >
+          Show me around the bar
+        </button>
       </div>
     </section>
   );

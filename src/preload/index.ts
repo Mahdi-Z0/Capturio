@@ -14,6 +14,12 @@ import type {
   FolderListing,
   RevealRequest,
   LibraryTab,
+  ShortcutAction,
+  ShortcutChange,
+  ShortcutStatus,
+  ShortcutUpdate,
+  RecordingsFolder,
+  RecordingsFolderUpdate,
 } from '../shared/types.js';
 
 /**
@@ -94,8 +100,7 @@ const api = {
   revealInLibrary: (filePath: string, play: boolean): Promise<void> =>
     ipcRenderer.invoke('library:reveal', filePath, play),
   openLibraryAt: (tab: LibraryTab): Promise<void> => ipcRenderer.invoke('library:open-at', tab),
-  takePendingTab: (): Promise<LibraryTab | null> =>
-    ipcRenderer.invoke('library:take-pending-tab'),
+  takePendingTab: (): Promise<LibraryTab | null> => ipcRenderer.invoke('library:take-pending-tab'),
   onLibraryTab: (handler: (tab: LibraryTab) => void): (() => void) => {
     const listener = (_e: unknown, tab: LibraryTab): void => handler(tab);
     ipcRenderer.on('library:tab', listener);
@@ -115,6 +120,21 @@ const api = {
 
   getFreeSpace: (): Promise<number | null> => ipcRenderer.invoke('recordings:free-space'),
 
+  startTour: (): Promise<void> => ipcRenderer.invoke('tour:start'),
+  onTour: (handler: () => void): (() => void) => {
+    const listener = (): void => handler();
+    ipcRenderer.on('tour:show', listener);
+    return () => ipcRenderer.removeListener('tour:show', listener);
+  },
+  takePendingTour: (): Promise<boolean> => ipcRenderer.invoke('tour:take-pending'),
+
+  getShortcuts: (): Promise<ShortcutStatus[]> => ipcRenderer.invoke('shortcuts:get'),
+  setShortcut: (action: ShortcutAction, change: ShortcutChange): Promise<ShortcutUpdate> =>
+    ipcRenderer.invoke('shortcuts:set', action, change),
+  suspendShortcuts: (suspended: boolean): void => {
+    ipcRenderer.send('shortcuts:suspend', suspended);
+  },
+
   reportProblem: (level: 'error' | 'warn', message: string): void => {
     ipcRenderer.send('log:renderer', level, message);
   },
@@ -127,6 +147,11 @@ const api = {
   revealRecording: (filePath: string): Promise<void> =>
     ipcRenderer.invoke('recordings:reveal', filePath),
   getRecordingsDir: (): Promise<string> => ipcRenderer.invoke('recordings:dir'),
+  getRecordingsFolder: (): Promise<RecordingsFolder> => ipcRenderer.invoke('recordings:folder'),
+  chooseRecordingsFolder: (): Promise<RecordingsFolderUpdate> =>
+    ipcRenderer.invoke('recordings:choose-folder'),
+  useDefaultRecordingsFolder: (): Promise<RecordingsFolderUpdate> =>
+    ipcRenderer.invoke('recordings:default-folder'),
 
   // The overlay and the recorder never speak directly -- main relays, so neither
   // window needs a handle on the other and the overlay can come and go freely.

@@ -929,7 +929,10 @@ body {
   font-size: 11.5px;
   cursor: pointer;
   opacity: 0;
-  transition: opacity 110ms ease, color 110ms ease, background-color 110ms ease;
+  transition:
+    opacity 110ms ease,
+    color 110ms ease,
+    background-color 110ms ease;
 }
 
 .folderCell:hover .folder__delete,
@@ -1319,6 +1322,143 @@ body {
   text-decoration: underline;
 }
 
+.page__note.is-warn {
+  color: var(--warn);
+}
+
+/* Global shortcuts. The button is the combination itself: click it, press keys. */
+.shortcuts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.shortcuts__row {
+  display: grid;
+  grid-template-columns: 190px auto auto 1fr;
+  align-items: center;
+  gap: 14px;
+  padding: 7px 0;
+  font-size: 13px;
+}
+
+.shortcuts__name {
+  color: var(--ink);
+}
+
+.shortcuts__keys {
+  min-width: 190px;
+  min-height: 34px;
+  padding: 5px 10px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: var(--raised);
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.shortcuts__keys:hover:not(:disabled) {
+  border-color: #3c4152;
+}
+
+.shortcuts__keys:focus-visible,
+.shortcuts__keys.is-listening {
+  outline: 2px solid #6f8cff;
+  outline-offset: 2px;
+}
+
+/* Switched off: the keys stay, so turning it back on is one click. */
+.shortcuts__keys.is-disabled .kbd {
+  opacity: 0.5;
+}
+
+.shortcuts__keys:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.switch {
+  position: relative;
+  width: 38px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--edge);
+  border-radius: 11px;
+  background: #2a2d3a;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.switch.is-on {
+  background: #4f63c9;
+  border-color: #5d71d6;
+}
+
+.switch__knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--ink);
+  transition: transform 120ms ease;
+}
+
+.switch.is-on .switch__knob {
+  transform: translateX(16px);
+}
+
+.switch:focus-visible {
+  outline: 2px solid #6f8cff;
+  outline-offset: 2px;
+}
+
+.switch:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .switch,
+  .switch__knob {
+    transition: none;
+  }
+}
+
+.page__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 18px;
+}
+
+.shortcuts__state {
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+.shortcuts__state.is-warn {
+  color: var(--warn);
+}
+
+.combo {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.combo__plus {
+  margin: 0 4px;
+  color: var(--ink-dim);
+}
+
 /* The key to the bar: the same icons, so it reads as a legend for the thing on
    screen rather than a manual written about it. */
 .keys {
@@ -1332,7 +1472,7 @@ body {
 
 .keys__row {
   display: grid;
-  grid-template-columns: 34px 150px 1fr;
+  grid-template-columns: 196px 1fr;
   align-items: baseline;
   gap: 12px;
   padding: 9px 0;
@@ -1344,17 +1484,6 @@ body {
   border-bottom: none;
 }
 
-.keys__icon {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  background: #22242f;
-  color: var(--ink);
-  align-self: center;
-}
-
 .keys__name {
   color: var(--ink);
   font-weight: 500;
@@ -1363,6 +1492,14 @@ body {
 .keys__what {
   color: var(--ink-dim);
   line-height: 1.5;
+}
+
+.keys__off {
+  color: var(--ink-dim);
+}
+
+.keys__warn {
+  color: var(--warn);
 }
 
 .kbd {

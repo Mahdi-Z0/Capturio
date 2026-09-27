@@ -38,14 +38,18 @@ Bin unless you explicitly choose otherwise.
 | ▭ ❐ ⬚ | whole screen, a window, a region |
 | 🔊 🎤 | computer sound, microphone — on or off, independently |
 | ● | start recording |
-| Sliders | settings: quality, microphone, where files go |
+| Sliders | settings: quality, microphone, shortcuts, and where recordings are saved |
 | Library | your recordings, in folders |
 | ✕ | hide the bar — it comes back from the tray icon |
 
 The window has three views — **Recordings**, **Settings** and **Help**, the last being a key to every
-button on the bar. It is never opened on startup; Capturio launches as the bar alone.
+button on the bar, with a short tour of the bar itself. The tour also runs once, the first time
+Capturio starts after installing. It is never opened on startup; Capturio launches as the bar alone.
 
-**Ctrl+Shift+R** starts and stops from anywhere, so you never have to find the bar first. A red
+**Win+Shift+Q** records a region from anywhere: drag it out and recording starts. A start/stop
+shortcut (**Win+Shift+Z**) is available too, switched off until you turn it on. Both can be changed
+in Settings, which also tells you if another program already uses one. The tray icon, or opening
+Capturio again, brings a hidden bar back. A red
 outline marks a region while it records, and neither the bar nor the outline appears in the
 recording.
 

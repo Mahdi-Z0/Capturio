@@ -8,6 +8,8 @@ clicks. When a choice arises between "powerful" and "obvious", pick obvious.
 `AppData/Roaming/Capturio`; `migrateSettingsFromOldName()` copies settings once from the former
 `screenrecorder` folder. Recordings go to `Videos/Capturio`, **except** when that folder does not
 exist and `Videos/ScreenRecorder` does — renaming the app must never orphan recordings already made.
+Either is only the default: the user can choose another folder in Settings (see "The recordings
+folder is the user's choice").
 
 ## Where the project's state is recorded
 
@@ -28,7 +30,8 @@ is believed.
 
 **Working:** full-screen, single-window and region capture to disk, quality presets, system (loopback) audio, the recordings
 window (browse by folder, play, reveal, move, delete, plus Settings and Help), user-made subfolders,
-crash recovery of `.part` files, seekable output, and pause/resume and mute while recording.
+crash recovery of `.part` files, seekable output, pause/resume and mute while recording, two
+configurable global shortcuts, and a recordings folder the user can choose.
 
 The app **is** a floating control bar, not a window someone visits. Recording never requires opening
 anything.
@@ -62,6 +65,7 @@ the language server still starts.
 | Verify guards | `npm run verify:guards` |
 | Verify ranges | `npm run verify:range` |
 | Verify finalize | `npm run verify:finalize` |
+| Verify shortcuts | `npm run verify:shortcuts` |
 | Progress report | `npm run progress` |
 
 `npm run build` runs `typecheck` first and fails the build on a type error. Keep it that way.
@@ -424,6 +428,7 @@ something is touched, not by category:
   screen rather than a manual written about it.
 
 **Launch is still bar only.** This window is never opened on startup, on first run or otherwise.
+(A fresh install's first launch shows the tour — on the bar, not in this window.)
 
 **The library stays mounted while another view shows** (`.is-hidden`, not unmounted): it holds a
 folder, a selection and a player, and losing those on a trip to Settings is its own small annoyance.
@@ -487,8 +492,8 @@ and not a broken measurement.
 window that is merely covered by another, which made a passing implementation look broken for an hour.
 Ask Windows instead — `IsWindowVisible` over `EnumWindows`, matched by window size.
 
-Ctrl+Shift+R starts and stops. The bar decides what `toggle` means, since only it knows what is
-currently selected.
+The start/stop shortcut sends `toggle`, and the bar decides what that means, since only it knows
+what is currently selected. See "Global shortcuts".
 
 **The bar has one panel left** (the window picker). Quality and the microphone moved to the window's
 Settings view, so `Panel` is `'none' | 'window'`.
@@ -520,6 +525,111 @@ transparent bodies.
 **Known limit.** Gradient banding (most visible in dark gradients) comes from 8-bit 4:2:0 chroma
 subsampling, which `MediaRecorder` does not let us avoid in either codec. Raising bitrate reduces
 but does not eliminate it. Fixing it properly needs a different capture/encode path.
+
+## Global shortcuts
+
+Two, each with its own keys and an on/off switch in Settings (`{ keys, enabled }`, settings v5):
+
+| Shortcut | Keys | Default |
+| --- | --- | --- |
+| Record a region | `Win+Shift+Q` | **on** |
+| Start or stop recording | `Win+Shift+Z` | **off** |
+
+The user's decisions (2026-09-27), not preferences to revisit: **three keys at most**
+(`accelerator.cjs` refuses a third modifier), start/stop **off** by default, and **no show/hide
+shortcut** — the tray and a relaunch already bring the bar back. A switched-off shortcut keeps its
+keys, so switching it on is one click; choosing new keys switches it on. Accelerators are written
+**Win first** (`Super+Shift+Q`), as Windows writes them.
+
+**Defaults live on Win** because apps and browsers almost never bind it, so a global shortcut there
+takes nothing from them. Start/stop was `Ctrl+Shift+R` until v6 — a browser's hard reload — and the
+user rejected mixing the two. Probed on 2026-09-27 before choosing: Windows or other programs hold
+Win+Shift+R (Snipping Tool recording), Win+Shift+W, Win+Shift+A, Win+Alt+R (Game Bar), Ctrl+Alt+R and
+Alt+Shift+R; Win+Shift+Z/X/D/E were free. Z shares Q's left-hand column. Settings v6 moves a stored
+start/stop that is still the untouched old default (`Control+Shift+R`, off) to the new one; one that
+was switched on was a choice, and stays.
+
+Ctrl+Shift+R being taken is not hypothetical: on 2026-09-27 an older installed Capturio was running
+alongside the test build, holding it, and Settings reported it as in use. Windows 11 also reserves
+Win+Alt+K (microphone mute in calls); the probe refuses it.
+
+**Report what registered, never what was asked for.** `globalShortcut.register` returns false when
+another process holds the combination; main keeps a state per shortcut (`on` / `off` / `taken`) and
+Settings, Help and the tray all show that, not the stored value. A new combination is **probed before
+it is saved** (register, unregister, then save), so a refused one changes nothing. Tested by holding a
+combination with `RegisterHotKey` from a PowerShell process.
+
+**Suspend them all while Settings listens.** A registered combination is consumed by Windows and never
+reaches the page, so pressing the *current* shortcut would fire it instead of being recorded.
+`shortcuts:suspend` unregisters everything; `setShortcut` lifts it on **every** path, refusals
+included, and the recordings window's `blur`/`hide`/`closed` lift it too. The same fact means a
+combination owned by another program can never be picked here: pressing it simply does nothing.
+
+**Listen on the window, not the button.** A button clicked by script, or one that lost focus, never
+sees the keydown. The first version listened on the button and could sit at "Press the keys…" with
+every shortcut suspended.
+
+**Validation lives in `accelerator.cjs`** and `verify-shortcuts.cjs` requires the shipped file, the
+same pattern as `recordingPath.cjs`. Canonical spelling is what makes the clash check sound. Keys are
+read by `event.code`; punctuation and the numeric keypad are refused because Electron maps them
+through the keyboard layout, so what is shown and what fires could differ.
+
+**The region shortcut outlives the recorder state it saw.** The selector resolves long after the
+shortcut that opened it; a recording may have started in between. The bar reads `start` and `locked`
+through a ref when the selection arrives. The closure's own `start()` still sees `idle` and would
+open a second recorder.
+
+**SendKeys cannot test hotkeys while an elevated window has the foreground.** Windows drops input
+injected from a lower-integrity process (UIPI), so a game or an admin window in front makes every
+shortcut look dead. Check the foreground window before concluding a shortcut is broken. Real key
+presses are unaffected.
+
+**The tray is created at launch, and there is one instance.** Until 08-01 `createTray()` was only
+reachable from the tray itself, so it never existed and hiding the bar stranded the app. Windows 11
+records every notification icon under `HKCU\Control Panel\NotifyIconSettings`, which is how to check.
+A second launch exits and the running app brings its bar back — the Start menu is a way back too.
+
+## The recordings folder is the user's choice
+
+Settings → **Change…** picks a folder with the system dialog; **Use the default folder** goes back.
+Stored as `recordingsDir` (null = default). **Recordings already made are never moved**: changing the
+folder only says where new ones go, and the window's footer and library follow it (the library
+remounts at the new folder's top, rather than holding a path from the old one).
+
+- **Settings are read before anything else at startup**, because crash recovery, the protocol and the
+  bar's first free-space check all read the folder. `configureRecordingsDir()` runs first.
+- **Refused:** a whole drive, Capturio's own `userData`, and any folder a probe file cannot be
+  written to — writing is the test, since Windows permissions are too layered for a mode check.
+  Refused while a recording is in progress, because that recording is writing into the current folder.
+- **A chosen folder that is missing at startup is not recreated.** On a drive that is not connected
+  that fails, and on one that is it may be the wrong drive. Recordings go to the default meanwhile,
+  the choice is kept for when the folder is back, it is logged, and Settings says so in one line.
+- Picking the default folder through the dialog stores null, not the path, so the rename fallback
+  keeps working.
+- Verified with the system dialog stubbed in main (`dialog.showOpenDialog` replaced over
+  `--inspect`), since CDP cannot click a native dialog. Everything after the dialog is shipped code.
+
+## The tour
+
+Six steps along the *live* bar (`Tour.tsx`). **Shown once, on a fresh install's first launch** —
+the user's decision on 2026-09-27, reversing the earlier "no tutorial on first run" — and from Help →
+**Show me around the bar** at any time.
+
+"First launch" means **no settings file at all**. A file without `tourSeen` is an install from before
+the tour existed, and a corrupt one belongs to someone who has used the app; neither gets the tour.
+`tourSeen` is written `true` as the tour is scheduled, so quitting mid-tour does not repeat it. A
+settings file carried over from the old app name also counts as an existing user.
+
+Testing a first run on a development machine is awkward: `--user-data-dir` gives an empty profile,
+but `migrateSettingsFromOldName()` then copies `AppData/Roaming/screenrecorder/settings.json` into
+it, which is an upgrade, not a first run. Electron ignores `%APPDATA%`, and stubbing `fs.existsSync`
+over the inspector does not reach the bundle's copy. What works: an empty profile with a settings
+file saying `"tourSeen": false`.
+
+Highlighting is CSS: bar elements carry permanent `data-tour` markers and the shell carries
+`data-touring`. Keep those markers when reworking the bar, or a step silently points at nothing. A
+step that names a shortcut shows it only when its state is `on`. `tour:start` is held for collection
+(`tour:take-pending`) when the bar is still loading, for the same reason as `tellLibrary`.
 
 ## Packaging
 

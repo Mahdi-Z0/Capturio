@@ -5,15 +5,15 @@ _Last generated: 2026-09-27_
 
 ## Overall
 
-**89% of declared features**, by effort weight.
+**96% of declared features**, by effort weight.
 
 ```
-██████████████████░░ 89%
+███████████████████░ 96%
 ```
 
 | Measure | Value |
 | --- | --- |
-| Feature completion (weighted) | 89% — 65 of 73 points |
+| Feature completion (weighted) | 96% — 72 of 75 points |
 | Plans completed | 13 of 13 defined (100%) |
 | Foundation items done | 13 of 13 |
 | Current milestone | v0.6 A library worth using |
@@ -60,14 +60,15 @@ _Last generated: 2026-09-27_
 | ✅ | Right-click menus | Done | 07-01 | A recording, a folder, or the background. Drawn in the renderer so it can list move targets |
 | ✅ | Scrub through a saved recording | Done | 05-01 | Finalized after save (duration + keyframe cues) and served with Range; nothing re-encoded |
 
-### Settings — 44%
+### Settings — 100%
 
 | | Feature | Status | Shipped in | Note |
 | --- | --- | --- | --- | --- |
 | ✅ | Choose recording quality | Done | 01-03, 07-01 | Three presets, persisted in userData; lives in the window’s Settings view |
 | ✅ | Settings and Help views | Done | 07-01 | Quality, microphone and where files go; Help is a key to every button on the bar |
-| ⬜ | Configurable global shortcuts | Not started | — | Phase 8: show the bar, and record a region immediately. Must report a registration that fails |
-| ⬜ | A short guided tour of the bar | Not started | — | Phase 8, and optional: launched from Settings/Help, never on first run. Help already covers it in prose |
+| ✅ | Configurable global shortcuts | Done | 08-01 | Record a region (Win+Shift+Q, on) and start/stop (Win+Shift+Z, off). Keys plus a switch, three keys max; a taken one is reported |
+| ✅ | Choose where recordings are saved | Done | 08-03 | Never moves existing recordings; a missing chosen folder falls back to the default and says so |
+| ✅ | A short guided tour of the bar | Done | 08-02 | Six steps on the live bar: once on a fresh install's first launch, and from Help |
 
 ### Controls — 100%
 
@@ -77,7 +78,7 @@ _Last generated: 2026-09-27_
 | ✅ | Pause and resume a recording | Done | 05-02 | MediaRecorder pause/resume; the clock excludes paused time |
 | ✅ | Mute audio mid-recording | Done | 05-02 | track.enabled=false records silence; the track is never stopped |
 | ✅ | Say where a recording went | Done | 07-01 | A card under the bar: Play and Show in library, both in-app. No window opens by itself |
-| ✅ | Start and stop from anywhere | Done | 05-02 | Ctrl+Shift+R, plus the tray icon. Reports it when Windows has the combination already |
+| ✅ | Start and stop from anywhere | Done | 05-02 | Win+Shift+Z (was Ctrl+Shift+R until 08-04), off by default; the tray icon always works |
 
 ### Shipping — 0%
 

@@ -20,7 +20,8 @@
     "dist:store": "npm run build && electron-builder --win appx --publish never",
     "verify:finalize": "node scripts/verify-finalize.cjs",
     "verify:range": "node scripts/verify-range.cjs",
-    "verify": "npm run verify:guards && npm run verify:range && npm run verify:finalize",
+    "verify:shortcuts": "node scripts/verify-shortcuts.cjs",
+    "verify": "npm run verify:guards && npm run verify:range && npm run verify:shortcuts && npm run verify:finalize",
     "icons": "node scripts/make-icons.cjs"
   },
   "dependencies": {

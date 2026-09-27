@@ -20,24 +20,27 @@ delete the result without leaving the app.
 
 ## Current Position
 
-Milestone: **v0.6 "A library worth using" shipped 2026-09-27.** v0.1–v0.6 all shipped.
-Phase: **7 complete.** Phase 8 (shortcuts and a tour) is next and not yet planned.
-Plan: none open. 07-01 closed.
+Milestone: **v0.7 "Shortcuts and a tour" — shipped 2026-09-27.** v0.1–v0.7 all shipped.
+Phase: **8 complete.** 08-01 shortcuts, 08-02 the tour (approved by the user), 08-03 their revisions
+and a choosable recordings folder, 08-04 the tour on first run and start/stop moved to Win+Shift+Z.
+Plan: none open. 08-01 closed (PLAN, APPLY and SUMMARY all written).
 Status: **Feature-complete for personal use.** The installer builds and has been tested outside the
 dev setup. Every declared feature is verified against the *built* app.
-Last activity: 2026-09-27 — the recordings window gained three views (Recordings / Settings / Help),
-and the documentation was brought up to date (this update).
+Last activity: 2026-09-27 — Phase 8 closed: global shortcuts (region Win+Shift+Q on, start/stop
+Win+Shift+Z off), a choosable recordings folder, a tour of the bar shown once on first launch, and
+two fixes found on the way (the tray icon had never been created; a second launch started a second
+recorder).
 
 Progress:
 
 - Declared features: [██████████] 100%
-- Remaining work is **new** scope (shortcuts, tour) plus Store packaging, not unfinished scope.
+- Remaining work is the user's verdict on the tour, plus Store packaging.
 
 ## Loop Position
 
 ```
 PLAN ──▶ APPLY ──▶ UNIFY
-  —        ✓        ✓     [Phases 6 and 7 were built conversationally; SUMMARYs written at close]
+  ✓        ✓        ✓     [08-01 went through the full loop]
 ```
 
 Phases 1–5 went through the full loop with PLAN and AUDIT files. Phases 6 and 7 did not: the user
@@ -55,8 +58,11 @@ the next phase is larger than a handful of requests, plan it properly.
 | Playback | Finalized after save (duration + keyframe cue index), served over `recording:` with `Range` |
 | The app | A floating bar (`#bar`), always on top, excluded from capture, resizes to its content |
 | The window | Recordings / Settings / Help. Folders, multi-select, drag-and-drop, right-click menus |
+| Shortcuts | Record a region (Win+Shift+Q, on) and start/stop (Win+Shift+Z, off). Keys plus a switch, three keys max; a taken one is reported |
+| Tour | Six steps on the live bar. Once on a fresh install's first launch, and from Help |
+| Recordings folder | Default under Videos, or the user's choice. Existing recordings are never moved |
 | Packaging | `npm run dist` → per-user NSIS installer. Generated multi-size icons. Tray icon. Persisted log |
-| Verification | `npm run verify` — path guards, byte ranges, finalizer, all against the shipped modules |
+| Verification | `npm run verify` — path guards, byte ranges, shortcut validation, finalizer, all against the shipped modules |
 
 ## Accumulated Context
 
@@ -80,6 +86,11 @@ SUMMARYs.
 | The recordings window hides while recording | 7 | It is the one window capture can see, and hiding does not stop its media — pause *and* mute |
 | One validator for every path | 7 | A name that cannot be served must not be creatable either; `verify-guards.cjs` exercises the shipped function |
 | Settings live in the window, not on the bar | 7 | One copy of each control. The bar keeps only what changes mid-recording |
+| Shortcut state is what registered, not what was stored | 8 | A new combination is probed before it is saved; `taken` is shown in Settings, Help and the tray |
+| One validator for shortcuts (`accelerator.cjs`) | 8 | `verify-shortcuts.cjs` requires the shipped file, as with paths |
+| Shortcuts: three keys max, start/stop off, no show/hide | 8 | The user's decisions after trying 08-01 — not to be revisited without them |
+| Changing the folder never moves recordings | 8 | A missing chosen folder is not recreated; the default is used and the choice kept |
+| Tray at launch; one instance | 8 | Hiding the bar is only safe because the tray and a relaunch bring it back |
 | Recordings folder falls back to `Videos/ScreenRecorder` | 6 | Renaming the app must never orphan existing recordings. **The live folder on this machine is the old one** |
 
 ### Deferred Issues
@@ -90,6 +101,10 @@ SUMMARYs.
 | **Installer is unsigned** | SmartScreen warns on first run | Only matters for direct distribution; the Store re-signs |
 | Gradient banding in dark gradients | Visible artefact | Root cause is 8-bit 4:2:0 chroma, which `MediaRecorder` cannot avoid in either codec. Needs a different capture/encode path |
 | A minimised window records nothing | Documented limit | Windows supplies no frames for it. Stated in README and Help |
+| **`verify:finalize` has no input here** | `npm run verify` exits 2 at its last step on this machine | Needs an unfinalized recording at the top of `Videos/ScreenRecorder`; there is none. Pre-existing. A committed fixture would remove the dependency |
+| Two contradictory `window-all-closed` handlers in main | None today (hiding never closes a window) | One is a no-op saying the app must not end, the later one quits. Pick one |
+| Win+Shift+Q and Win+Shift+Z never pressed by real keys in testing | Low | A game held the foreground in 08-01, which blocks injected input; since then both were only checked as registered. A human pressing them once closes it |
+| First launch with *no* settings file not driven end to end | Low | On this machine the old-name settings file is always carried over first. Every step after "missing file → not seen" was verified with a `tourSeen: false` profile |
 | Folder **rename** is not implemented | Minor | Create and delete are; rename was never asked for, and Explorer is one click away |
 | Recordings made before 05-01 report no duration | Cosmetic, historical | The player says so when one is opened. Not worth a migration |
 | ~~Full-screen capture at ~12 fps~~ | — | **Cleared 2026-09-23 by a reboot.** It was an OS state: DXGI duplication failed on both adapters. Before blaming code for choppy capture, run the Chromium capture logs — see `CLAUDE.md` |
@@ -117,10 +132,15 @@ These hold for **any** future plan unless the user explicitly lifts them:
 ## Session Continuity
 
 Last session: 2026-09-27
-Stopped at: Phase 7 closed and the project documentation brought up to date.
-Next action: **Phase 8 — configurable global shortcuts** (show the bar; record a region immediately),
-then decide whether the short tour is still worth building now that Help exists.
-Resume file: `.paul/phases/07-library-and-window-ux/07-01-SUMMARY.md`
+Stopped at: Phase 8 and v0.7 complete, committed and pushed.
+Next action: **Phase 9 — Microsoft Store (MSIX)**, waiting on the user's Partner Center publisher
+identity. Small loose ends meanwhile: a committed fixture for `verify:finalize`, and the duplicate
+`window-all-closed` handlers.
+Resume file: `.paul/phases/08-shortcuts-and-tour/08-04-SUMMARY.md`
+
+**An older installed Capturio is running on this machine** (two copies, no tray icon, from before the
+single-instance lock). It holds Ctrl+Shift+R. The user should quit it from Task Manager and reinstall
+with `npm run dist`.
 
 **Repository:** `https://github.com/Mahdi-Z0/Capturio.git`, branch `main`.
 
